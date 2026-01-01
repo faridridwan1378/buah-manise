@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Toko Buah — Real-time Inventory & Transaksi</title>
+  <title>Varsha — Real-time Inventory & Transaksi</title>
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <!-- Firebase (Compat) for quick single-file setup -->
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -22,13 +22,13 @@
 <body class="bg-slate-50 text-slate-900">
   <header class="sticky top-0 z-40 border-b bg-white/90 backdrop-blur">
     <div class="mx-auto max-w-7xl px-4 py-3 flex items-center gap-3">
-      <div class="flex items-center gap-3 min-w-0">
-        <div class="h-10 w-10 rounded-2xl bg-gradient-to-br from-green-500 to-lime-400 grid place-items-center text-white font-black">TB</div>
-        <div class="min-w-0">
-          <div class="font-semibold leading-tight">Toko Buah</div>
-          <div class="text-xs text-slate-500 leading-tight">Inventory • Pembelian Supplier • Penjualan • Biaya • Pengiriman (Real-time)</div>
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="h-10 w-10 rounded-2xl bg-gradient-to-br from-green-500 to-lime-400 grid place-items-center text-white font-black">V</div>
+          <div class="min-w-0">
+            <div class="font-semibold leading-tight">Varsha</div>
+            <div class="text-xs text-slate-500 leading-tight">Inventory • Pembelian Supplier • Penjualan • Biaya • Pengiriman (Real-time)</div>
+          </div>
         </div>
-      </div>
       <div class="ml-auto flex items-center gap-2">
         <span id="connBadge" class="hidden sm:inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs">
           <span id="connDot" class="h-2 w-2 rounded-full bg-slate-400"></span>
@@ -50,12 +50,12 @@
     <section id="bannerCloud" class="mb-5 hidden rounded-2xl border border-amber-200 bg-amber-50 p-4">
       <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <div class="font-semibold">Mode Demo Lokal aktif</div>
+          <div class="font-semibold">Mode Lokal aktif</div>
           <div class="text-sm text-amber-900/80">Isi Firebase Config untuk menyimpan data di cloud dan real-time multi-device. Klik <span class="font-medium">Setup Cloud</span>.</div>
         </div>
         <div class="flex gap-2">
           <button id="btnOpenSetup2" class="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700">Setup Cloud</button>
-          <button id="btnSeedDemo" class="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm hover:bg-amber-50">Isi Data Contoh</button>
+          <button id="btnSeedDemo" class="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm hover:bg-amber-50">Isi Data</button>
         </div>
       </div>
     </section>
@@ -520,7 +520,7 @@
       </div>
 
       <div class="flex flex-wrap gap-2 justify-end">
-        <button id="btnResetCloud" class="rounded-xl border bg-white px-4 py-2 text-sm hover:bg-slate-50">Reset ke Demo Lokal</button>
+        <button id="btnResetCloud" class="rounded-xl border bg-white px-4 py-2 text-sm hover:bg-slate-50">Reset ke Mode Lokal</button>
         <button id="btnSaveCloud" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Simpan & Reload</button>
       </div>
     </div>
@@ -581,9 +581,9 @@
     ];
 
     const STORAGE_KEYS = {
-      cloudCfg: 'tokobuah.firebaseConfig.v1',
-      cart: 'tokobuah.cart.v1',
-      demoSeeded: 'tokobuah.demoSeeded.v1'
+      cloudCfg: 'varsha.firebaseConfig.v1',
+      cart: 'varsha.cart.v1',
+      demoSeeded: 'varsha.demoSeeded.v1'
     };
 
     const DEFAULT_FIREBASE_CONFIG = {
@@ -676,12 +676,12 @@
     }
 
     /*********************
-     * DATA LAYER (Firebase or Local Demo)
+     * DATA LAYER (Firebase or Local)
      *********************/
 
     // Local demo: uses localStorage + BroadcastChannel for realtime across tabs.
     class LocalRealtimeDB {
-      constructor(prefix='tokobuah'){ this.prefix = prefix; this.bc = new BroadcastChannel(prefix); }
+      constructor(prefix='varsha'){ this.prefix = prefix; this.bc = new BroadcastChannel(prefix); }
       _key(path){ return `${this.prefix}:${path}`; }
       _read(path){
         const raw = localStorage.getItem(this._key(path));
@@ -736,7 +736,7 @@
 
     // Local demo auth
     class LocalAuth {
-      constructor(){ this.user = null; this.listeners = []; this.key='tokobuah:localAuthUser'; this._load(); }
+      constructor(){ this.user = null; this.listeners = []; this.key='varsha:localAuthUser'; this._load(); }
       _load(){
         try{ const raw = localStorage.getItem(this.key); this.user = raw? JSON.parse(raw): null; }catch{ this.user=null; }
         setTimeout(()=>this._emit(),0);
@@ -807,7 +807,7 @@
         setConn('ok', 'Cloud');
       } else {
         auth = new LocalAuth();
-        rtdb = new LocalRealtimeDB('tokobuah');
+        rtdb = new LocalRealtimeDB('varsha');
         // Query helper local (filter di client)
         rtdb.onOrdersForUser = (uid, cb)=> rtdb.onValue('orders', (v)=>{
           const all = v || {};
@@ -817,7 +817,7 @@
           }
           cb(filtered);
         });
-        setConn('warn', 'Demo Lokal');
+        setConn('warn', 'Mode Lokal');
       }
 
       $('#modeText').textContent = MODE;
@@ -1561,7 +1561,7 @@
 
       // build WA message
       const lines = items.map(it=> `- ${it.name} x${it.qty} = ${rupiah(it.qty*it.price)}`).join('\n');
-      const msg = `Halo Toko Buah, saya mau pesan:\n${lines}\nSubtotal: ${rupiah(subtotal)}\nOngkir: ${rupiah(shipCost)} (${shipMethod})\nTotal: ${rupiah(total)}\nNama: ${name}\nAlamat: ${address || '(pickup)'}\n\nMohon konfirmasi. Terima kasih.`;
+      const msg = `Halo Varsha, saya mau pesan:\n${lines}\nSubtotal: ${rupiah(subtotal)}\nOngkir: ${rupiah(shipCost)} (${shipMethod})\nTotal: ${rupiah(total)}\nNama: ${name}\nAlamat: ${address || '(pickup)'}\n\nMohon konfirmasi. Terima kasih.`;
       const link = waLink(phone, msg);
 
       const orderId = uid('ord');
@@ -1918,13 +1918,13 @@
     /*********************
      * DEMO SEED
      *********************/
-    async function seedDemoData(){
+    async function seedData(){
       if(MODE==='CLOUD'){
-        toast('Seed demo ditujukan untuk mode lokal. Di cloud, sebaiknya input manual.', 'warn');
+        toast('Seed data ditujukan untuk mode lokal. Di cloud, sebaiknya input manual.', 'warn');
         return;
       }
       if(localStorage.getItem(STORAGE_KEYS.demoSeeded)==='1'){
-        toast('Data contoh sudah pernah dibuat.', 'warn');
+        toast('Data sudah pernah dibuat.', 'warn');
         return;
       }
       const now = Date.now();
@@ -1936,9 +1936,9 @@
         prd_semangka: { name:'Semangka', unit:'pcs', price: 45000, stock: 8, active:true, imageUrl:'', createdAt: now }
       };
       await rtdb.set('products', demoProducts);
-      await appendMiniLog({ type:'DEMO_SEED', ref:'products', by:'system' });
+      await appendMiniLog({ type:'DATA_SEED', ref:'products', by:'system' });
       localStorage.setItem(STORAGE_KEYS.demoSeeded,'1');
-      toast('Data contoh ditambahkan.', 'ok');
+      toast('Data ditambahkan.', 'ok');
     }
 
     /*********************
@@ -2121,8 +2121,8 @@
       location.reload();
     });
 
-    // Demo seed
-    $('#btnSeedDemo').addEventListener('click', seedDemoData);
+    // Seed data
+    $('#btnSeedDemo').addEventListener('click', seedData);
 
     // default tabs
     switchTab('shop');
@@ -2134,7 +2134,7 @@
     // If cloud but config invalid show notice
     if(MODE==='LOCAL_DEMO'){
       $('#bannerCloud').classList.remove('hidden');
-      setConn('warn','Demo Lokal');
+      setConn('warn','Mode Lokal');
     }
   </script>
 </body>
