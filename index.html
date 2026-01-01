@@ -1,0 +1,2141 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Toko Buah — Real-time Inventory & Transaksi</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <!-- Firebase (Compat) for quick single-file setup -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+  <style>
+    :root{ color-scheme: light; }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .scrollbar-thin::-webkit-scrollbar{ height: 8px; width: 8px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb{ background: rgba(0,0,0,.2); border-radius: 999px; }
+    .toast{ animation: slideIn .18s ease-out; }
+    @keyframes slideIn{ from{ transform: translateY(8px); opacity: 0; } to{ transform: translateY(0); opacity: 1; } }
+    dialog::backdrop{ background: rgba(0,0,0,.4); }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <header class="sticky top-0 z-40 border-b bg-white/90 backdrop-blur">
+    <div class="mx-auto max-w-7xl px-4 py-3 flex items-center gap-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="h-10 w-10 rounded-2xl bg-gradient-to-br from-green-500 to-lime-400 grid place-items-center text-white font-black">TB</div>
+        <div class="min-w-0">
+          <div class="font-semibold leading-tight">Toko Buah</div>
+          <div class="text-xs text-slate-500 leading-tight">Inventory • Pembelian Supplier • Penjualan • Biaya • Pengiriman (Real-time)</div>
+        </div>
+      </div>
+      <div class="ml-auto flex items-center gap-2">
+        <span id="connBadge" class="hidden sm:inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs">
+          <span id="connDot" class="h-2 w-2 rounded-full bg-slate-400"></span>
+          <span id="connText">Menghubungkan…</span>
+        </span>
+        <button id="btnOpenSetup" class="hidden md:inline-flex rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50">Setup Cloud</button>
+        <div id="userChip" class="hidden items-center gap-2 rounded-2xl border bg-white px-3 py-2">
+          <div class="text-xs leading-tight">
+            <div id="userEmail" class="font-medium truncate max-w-[180px]"></div>
+            <div class="text-[11px] text-slate-500">Role: <span id="userRole" class="font-medium"></span> • <span id="modeText" class="mono"></span></div>
+          </div>
+          <button id="btnLogout" class="rounded-xl bg-slate-900 px-3 py-2 text-xs text-white hover:bg-slate-800">Keluar</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 py-6">
+    <section id="bannerCloud" class="mb-5 hidden rounded-2xl border border-amber-200 bg-amber-50 p-4">
+      <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div class="font-semibold">Mode Demo Lokal aktif</div>
+          <div class="text-sm text-amber-900/80">Isi Firebase Config untuk menyimpan data di cloud dan real-time multi-device. Klik <span class="font-medium">Setup Cloud</span>.</div>
+        </div>
+        <div class="flex gap-2">
+          <button id="btnOpenSetup2" class="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700">Setup Cloud</button>
+          <button id="btnSeedDemo" class="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm hover:bg-amber-50">Isi Data Contoh</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Auth -->
+    <section id="authView" class="grid gap-6 md:grid-cols-2">
+      <div class="rounded-3xl border bg-white p-6">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <h1 class="text-xl font-semibold">Masuk / Daftar</h1>
+            <p class="text-sm text-slate-600">Customer bisa belanja dan kirim konfirmasi via WhatsApp. Admin mengelola produk, inventory, pembelian, biaya, dan pesanan.</p>
+          </div>
+          <button id="btnOpenSetup3" class="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50">Setup Cloud
+          </button>
+        </div>
+
+        <div class="mt-5 grid gap-3">
+          <div class="grid gap-1">
+            <label class="text-xs font-medium text-slate-600">Email</label>
+            <input id="authEmail" type="email" class="rounded-xl border px-3 py-2" placeholder="nama@contoh.com" />
+          </div>
+          <div class="grid gap-1">
+            <label class="text-xs font-medium text-slate-600">Password</label>
+            <input id="authPass" type="password" class="rounded-xl border px-3 py-2" placeholder="Minimal 6 karakter" />
+          </div>
+          <div id="registerExtra" class="hidden grid gap-3">
+            <div class="grid gap-1">
+              <label class="text-xs font-medium text-slate-600">Nama</label>
+              <input id="authName" type="text" class="rounded-xl border px-3 py-2" placeholder="Nama lengkap" />
+            </div>
+            <div class="rounded-2xl border bg-slate-50 p-3 text-xs text-slate-600">
+              Role default: <span class="font-semibold">customer</span>. Admin dapat mengubah role di menu Admin → Pengguna. Untuk demo cepat, email yang ada di daftar <span class="mono">ADMIN_EMAILS</span> otomatis jadi admin.
+            </div>
+          </div>
+          <div class="mt-2 flex flex-wrap gap-2">
+            <button id="btnLogin" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Masuk</button>
+            <button id="btnToggleRegister" class="rounded-xl border bg-white px-4 py-2 text-sm hover:bg-slate-50">Daftar</button>
+          </div>
+          <div class="text-xs text-slate-500">Dengan masuk, Anda menyetujui pencatatan transaksi, biaya, pengiriman, dan log konfirmasi status (termasuk klik tombol WhatsApp).</div>
+        </div>
+      </div>
+
+      <div class="rounded-3xl border bg-white p-6">
+        <h2 class="text-lg font-semibold">Fitur</h2>
+        <div class="mt-4 grid gap-3 text-sm text-slate-700">
+          <div class="rounded-2xl border bg-slate-50 p-4">
+            <div class="font-semibold">Real-time Inventory & Transaksi</div>
+            <div class="text-slate-600">Produk, stok, pembelian supplier, pesanan, biaya, dan status diperbarui otomatis via Firebase Realtime Database.</div>
+          </div>
+          <div class="rounded-2xl border bg-slate-50 p-4">
+            <div class="font-semibold">Konfirmasi Sistem + WA Tercatat</div>
+            <div class="text-slate-600">Setiap status order disimpan di riwayat. Tombol WA menghasilkan pesan otomatis dan mencatat waktu klik/tautan.</div>
+          </div>
+          <div class="rounded-2xl border bg-slate-50 p-4">
+            <div class="font-semibold">Kontrol User</div>
+            <div class="text-slate-600">Login user, role customer/admin, menu admin untuk mengubah role user.</div>
+          </div>
+        </div>
+        <div class="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-xs text-indigo-900/80">
+          <div class="font-semibold">Catatan keamanan</div>
+          <div>Untuk produksi, wajib pasang <span class="mono">Firebase Realtime Database Rules</span> agar customer tidak bisa mengubah data admin. Aplikasi ini adalah template fungsional (single-page) untuk dipasang aturan & backend tambahan bila diperlukan.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- App -->
+    <section id="appView" class="hidden">
+      <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h1 class="text-xl font-semibold">Dashboard</h1>
+          <p class="text-sm text-slate-600">Data tersimpan di <span class="font-medium">cloud</span> (atau demo lokal), real-time sinkron.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button data-tab="shop" class="tabBtn rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">Toko</button>
+          <button data-tab="myorders" class="tabBtn rounded-xl border bg-white px-4 py-2 text-sm hover:bg-slate-50">Pesanan Saya</button>
+          <button data-tab="admin" id="adminTabBtn" class="tabBtn hidden rounded-xl border bg-white px-4 py-2 text-sm hover:bg-slate-50">Admin</button>
+        </div>
+      </div>
+
+      <div class="mt-5 grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
+        <!-- Left: dynamic content -->
+        <div>
+          <!-- Shop -->
+          <section id="tab-shop" class="tabPanel">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h2 class="text-lg font-semibold">Katalog Buah</h2>
+                <div class="text-sm text-slate-600">Pilih buah, masukkan ke keranjang, lalu checkout.</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <input id="search" class="w-56 rounded-xl border bg-white px-3 py-2 text-sm" placeholder="Cari buah…" />
+                <button id="btnRefresh" class="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
+              </div>
+            </div>
+
+            <div id="productsGrid" class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"></div>
+
+            <div class="mt-6 rounded-3xl border bg-white p-5">
+              <div class="flex items-center justify-between">
+                <h3 class="font-semibold">Checkout</h3>
+                <div class="text-xs text-slate-500">Order akan dibuat dengan status <span class="mono">CREATED</span>.</div>
+              </div>
+              <div class="mt-4 grid gap-3 md:grid-cols-2">
+                <div class="grid gap-1">
+                  <label class="text-xs font-medium text-slate-600">Nama</label>
+                  <input id="ckName" class="rounded-xl border px-3 py-2" placeholder="Nama penerima" />
+                </div>
+                <div class="grid gap-1">
+                  <label class="text-xs font-medium text-slate-600">No. WhatsApp</label>
+                  <input id="ckPhone" class="rounded-xl border px-3 py-2" placeholder="contoh: 62812xxxx" />
+                </div>
+                <div class="md:col-span-2 grid gap-1">
+                  <label class="text-xs font-medium text-slate-600">Alamat</label>
+                  <textarea id="ckAddress" class="min-h-[70px] rounded-xl border px-3 py-2" placeholder="Alamat lengkap untuk pengiriman"></textarea>
+                </div>
+                <div class="grid gap-1">
+                  <label class="text-xs font-medium text-slate-600">Metode Kirim</label>
+                  <select id="ckShipMethod" class="rounded-xl border bg-white px-3 py-2">
+                    <option value="pickup">Ambil di toko</option>
+                    <option value="courier">Kurir (diantar)</option>
+                    <option value="same_day">Same-day</option>
+                  </select>
+                </div>
+                <div class="grid gap-1">
+                  <label class="text-xs font-medium text-slate-600">Biaya Kirim (Rp)</label>
+                  <input id="ckShipCost" type="number" min="0" class="rounded-xl border px-3 py-2" value="0" />
+                </div>
+              </div>
+              <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <div class="text-sm text-slate-700">
+                  <div>Subtotal: <span id="ckSubtotal" class="font-semibold">Rp 0</span></div>
+                  <div>Total (+ongkir): <span id="ckTotal" class="font-semibold">Rp 0</span></div>
+                </div>
+                <button id="btnCheckout" class="rounded-xl bg-green-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-700">Buat Pesanan</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- My orders -->
+          <section id="tab-myorders" class="tabPanel hidden">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-lg font-semibold">Pesanan Saya</h2>
+                <div class="text-sm text-slate-600">Status diperbarui real-time. Kirim WA dari tombol untuk tercatat.</div>
+              </div>
+              <button id="btnMyOrdersRefresh" class="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
+            </div>
+            <div id="myOrdersList" class="mt-4 grid gap-4"></div>
+          </section>
+
+          <!-- Admin -->
+          <section id="tab-admin" class="tabPanel hidden">
+            <div class="rounded-3xl border bg-white p-5">
+              <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 class="text-lg font-semibold">Admin</h2>
+                  <div class="text-sm text-slate-600">Kelola produk, pembelian supplier, pesanan, biaya, pengguna, dan laporan.</div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button data-admintab="produk" class="adminTabBtn rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">Produk & Inventory</button>
+                  <button data-admintab="pembelian" class="adminTabBtn rounded-xl border bg-white px-4 py-2 text-sm hover:bg-slate-50">Pembelian Supplier</button>
+                  <button data-admintab="pesanan" class="adminTabBtn rounded-xl border bg-white px-4 py-2 text-sm hover:bg-slate-50">Pesanan/Penjualan</button>
+                  <button data-admintab="biaya" class="adminTabBtn rounded-xl border bg-white px-4 py-2 text-sm hover:bg-slate-50">Biaya</button>
+                  <button data-admintab="pengguna" class="adminTabBtn rounded-xl border bg-white px-4 py-2 text-sm hover:bg-slate-50">Pengguna</button>
+                  <button data-admintab="laporan" class="adminTabBtn rounded-xl border bg-white px-4 py-2 text-sm hover:bg-slate-50">Laporan</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-4 grid gap-4">
+              <!-- Produk -->
+              <section id="admin-produk" class="adminPanel rounded-3xl border bg-white p-5">
+                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h3 class="font-semibold">Produk & Inventory</h3>
+                    <div class="text-sm text-slate-600">Tambah/edit buah, harga jual, stok, dan status aktif.</div>
+                  </div>
+                  <button id="btnNewProduct" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">+ Produk</button>
+                </div>
+                <div id="adminProducts" class="mt-4 grid gap-3"></div>
+              </section>
+
+              <!-- Pembelian -->
+              <section id="admin-pembelian" class="adminPanel hidden rounded-3xl border bg-white p-5">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 class="font-semibold">Pembelian ke Supplier (Stok Masuk)</h3>
+                    <div class="text-sm text-slate-600">Meningkatkan stok, mencatat biaya pembelian + biaya pengiriman.</div>
+                  </div>
+                  <button id="btnAddPurchaseRow" class="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50">+ Item</button>
+                </div>
+
+                <div class="mt-4 grid gap-3 md:grid-cols-2">
+                  <div class="grid gap-1">
+                    <label class="text-xs font-medium text-slate-600">Supplier</label>
+                    <input id="purSupplier" class="rounded-xl border px-3 py-2" placeholder="Nama supplier" />
+                  </div>
+                  <div class="grid gap-1">
+                    <label class="text-xs font-medium text-slate-600">No. Referensi</label>
+                    <input id="purRef" class="rounded-xl border px-3 py-2" placeholder="(opsional)" />
+                  </div>
+                  <div class="grid gap-1">
+                    <label class="text-xs font-medium text-slate-600">Biaya Pengiriman (Rp)</label>
+                    <input id="purShipCost" type="number" min="0" class="rounded-xl border px-3 py-2" value="0" />
+                  </div>
+                  <div class="grid gap-1">
+                    <label class="text-xs font-medium text-slate-600">Biaya Lain (Rp)</label>
+                    <input id="purOtherCost" type="number" min="0" class="rounded-xl border px-3 py-2" value="0" />
+                  </div>
+                  <div class="md:col-span-2 grid gap-1">
+                    <label class="text-xs font-medium text-slate-600">Catatan</label>
+                    <textarea id="purNote" class="min-h-[70px] rounded-xl border px-3 py-2" placeholder="Catatan pembelian"></textarea>
+                  </div>
+                </div>
+
+                <div class="mt-4 overflow-auto scrollbar-thin rounded-2xl border">
+                  <table class="min-w-full text-sm">
+                    <thead class="bg-slate-50 text-left">
+                      <tr>
+                        <th class="p-3">Produk</th>
+                        <th class="p-3">Qty</th>
+                        <th class="p-3">Harga Beli (Rp)</th>
+                        <th class="p-3">Subtotal</th>
+                        <th class="p-3"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="purchaseItems"></tbody>
+                  </table>
+                </div>
+
+                <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <div class="text-sm">
+                    <div>Total item: <span id="purItemsTotal" class="font-semibold">Rp 0</span></div>
+                    <div>Grand total (+ongkir+lain): <span id="purGrandTotal" class="font-semibold">Rp 0</span></div>
+                  </div>
+                  <button id="btnSavePurchase" class="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">Simpan Pembelian</button>
+                </div>
+
+                <div class="mt-6">
+                  <div class="flex items-center justify-between">
+                    <h4 class="font-semibold">Riwayat Pembelian (Real-time)</h4>
+                    <button id="btnPurchaseRefresh" class="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
+                  </div>
+                  <div id="purchaseList" class="mt-3 grid gap-3"></div>
+                </div>
+              </section>
+
+              <!-- Pesanan -->
+              <section id="admin-pesanan" class="adminPanel hidden rounded-3xl border bg-white p-5">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h3 class="font-semibold">Pesanan / Penjualan</h3>
+                    <div class="text-sm text-slate-600">Ubah status, catat konfirmasi sistem. Data WA (klik link) ikut tercatat.</div>
+                  </div>
+                  <button id="btnOrdersRefresh" class="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
+                </div>
+                <div id="adminOrders" class="mt-4 grid gap-3"></div>
+              </section>
+
+              <!-- Biaya -->
+              <section id="admin-biaya" class="adminPanel hidden rounded-3xl border bg-white p-5">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h3 class="font-semibold">Biaya Operasional</h3>
+                    <div class="text-sm text-slate-600">Catat biaya (listrik, sewa, kemasan, dll). Ini masuk laporan.</div>
+                  </div>
+                </div>
+
+                <div class="mt-4 grid gap-3 md:grid-cols-3">
+                  <div class="grid gap-1">
+                    <label class="text-xs font-medium text-slate-600">Jenis</label>
+                    <input id="expType" class="rounded-xl border px-3 py-2" placeholder="contoh: Kemasan" />
+                  </div>
+                  <div class="grid gap-1">
+                    <label class="text-xs font-medium text-slate-600">Jumlah (Rp)</label>
+                    <input id="expAmount" type="number" min="0" class="rounded-xl border px-3 py-2" value="0" />
+                  </div>
+                  <div class="grid gap-1">
+                    <label class="text-xs font-medium text-slate-600">Catatan</label>
+                    <input id="expNote" class="rounded-xl border px-3 py-2" placeholder="(opsional)" />
+                  </div>
+                </div>
+                <div class="mt-3 flex justify-end">
+                  <button id="btnSaveExpense" class="rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-rose-700">Simpan Biaya</button>
+                </div>
+
+                <div class="mt-6">
+                  <div class="flex items-center justify-between">
+                    <h4 class="font-semibold">Riwayat Biaya (Real-time)</h4>
+                    <button id="btnExpenseRefresh" class="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
+                  </div>
+                  <div id="expenseList" class="mt-3 grid gap-3"></div>
+                </div>
+              </section>
+
+              <!-- Pengguna -->
+              <section id="admin-pengguna" class="adminPanel hidden rounded-3xl border bg-white p-5">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h3 class="font-semibold">Pengguna</h3>
+                    <div class="text-sm text-slate-600">Ubah role user (customer/admin). Untuk keamanan, gunakan Database Rules.</div>
+                  </div>
+                  <button id="btnUsersRefresh" class="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
+                </div>
+                <div id="usersList" class="mt-4 grid gap-3"></div>
+              </section>
+
+              <!-- Laporan -->
+              <section id="admin-laporan" class="adminPanel hidden rounded-3xl border bg-white p-5">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h3 class="font-semibold">Laporan Ringkas</h3>
+                    <div class="text-sm text-slate-600">Rekap penjualan, pembelian, biaya, dan estimasi laba kotor (berdasarkan input).</div>
+                  </div>
+                  <button id="btnReportRefresh" class="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50">Refresh</button>
+                </div>
+
+                <div class="mt-4 grid gap-4 md:grid-cols-2">
+                  <div class="rounded-2xl border bg-slate-50 p-4">
+                    <div class="text-xs text-slate-500">Total Penjualan (order status CONFIRMED/SHIPPED/DONE)</div>
+                    <div id="repSales" class="mt-1 text-2xl font-semibold">Rp 0</div>
+                    <div class="mt-2 text-xs text-slate-500">Catatan: biaya kirim ditambahkan ke total order.</div>
+                  </div>
+                  <div class="rounded-2xl border bg-slate-50 p-4">
+                    <div class="text-xs text-slate-500">Total Pembelian Supplier</div>
+                    <div id="repPurchases" class="mt-1 text-2xl font-semibold">Rp 0</div>
+                  </div>
+                  <div class="rounded-2xl border bg-slate-50 p-4">
+                    <div class="text-xs text-slate-500">Total Biaya Operasional</div>
+                    <div id="repExpenses" class="mt-1 text-2xl font-semibold">Rp 0</div>
+                  </div>
+                  <div class="rounded-2xl border bg-slate-50 p-4">
+                    <div class="text-xs text-slate-500">Estimasi Laba (Penjualan - Pembelian - Biaya)</div>
+                    <div id="repProfit" class="mt-1 text-2xl font-semibold">Rp 0</div>
+                  </div>
+                </div>
+
+                <div class="mt-5 rounded-2xl border bg-white p-4">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <div class="font-semibold">Live Feed</div>
+                      <div class="text-sm text-slate-600">Transaksi terbaru (order, pembelian, biaya) real-time.</div>
+                    </div>
+                  </div>
+                  <div id="liveFeed" class="mt-3 grid gap-2"></div>
+                </div>
+              </section>
+            </div>
+          </section>
+        </div>
+
+        <!-- Right: Cart + quick info -->
+        <aside class="lg:sticky lg:top-20 h-fit">
+          <div class="rounded-3xl border bg-white p-5">
+            <div class="flex items-center justify-between">
+              <h3 class="font-semibold">Keranjang</h3>
+              <button id="btnClearCart" class="rounded-xl border bg-white px-3 py-1.5 text-xs hover:bg-slate-50">Kosongkan</button>
+            </div>
+            <div id="cartList" class="mt-3 grid gap-3"></div>
+            <div class="mt-4 border-t pt-3 text-sm">
+              <div class="flex items-center justify-between">
+                <span class="text-slate-600">Subtotal</span>
+                <span id="cartSubtotal" class="font-semibold">Rp 0</span>
+              </div>
+              <div class="mt-1 flex items-center justify-between text-xs text-slate-500">
+                <span>Stok & harga mengikuti data real-time.</span>
+                <span id="cartItemsCount" class="mono">0 item</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 rounded-3xl border bg-white p-5">
+            <div class="font-semibold">Status & Log</div>
+            <div class="mt-2 text-xs text-slate-600">Klik WA, perubahan status, dan transaksi disimpan ke database sebagai audit trail sederhana.</div>
+            <div class="mt-3 rounded-2xl border bg-slate-50 p-3 text-xs">
+              <div class="flex items-center justify-between">
+                <span class="text-slate-500">Waktu</span>
+                <span class="text-slate-500">Event</span>
+              </div>
+              <div id="miniLog" class="mt-2 grid gap-2"></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <!-- Setup Cloud Dialog -->
+  <dialog id="setupDialog" class="w-[min(780px,92vw)] rounded-3xl border bg-white p-0">
+    <div class="border-b px-5 py-4 flex items-start justify-between gap-4">
+      <div>
+        <div class="text-lg font-semibold">Setup Cloud (Firebase)</div>
+        <div class="text-sm text-slate-600">Isi config agar data tersimpan di cloud & real-time multi device.</div>
+      </div>
+      <button id="btnCloseSetup" class="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50">Tutup</button>
+    </div>
+    <div class="p-5 grid gap-4">
+      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+        <ol class="list-decimal pl-5 grid gap-1">
+          <li>Buat project di <span class="mono">console.firebase.google.com</span></li>
+          <li>Aktifkan <span class="font-medium">Authentication → Email/Password</span></li>
+          <li>Buat <span class="font-medium">Realtime Database</span></li>
+          <li>Atur <span class="font-medium">Rules</span> (lihat contoh di bawah)</li>
+          <li>Copy config Web App ke bawah, lalu klik <span class="font-medium">Simpan</span></li>
+        </ol>
+        <div class="mt-2 text-xs text-slate-500">Catatan: agar aman, batasi write customer. Template ini mencontohkan rules role-based.</div>
+      </div>
+
+      <details class="rounded-2xl border bg-white p-4">
+        <summary class="cursor-pointer text-sm font-semibold">Contoh Realtime Database Rules (copy & paste)</summary>
+        <div class="mt-3 grid gap-4">
+          <div class="text-xs text-slate-600">
+            Buka Firebase Console → <b>Realtime Database</b> → tab <b>Rules</b>, paste rules, lalu <b>Publish</b>.
+            Untuk bootstrap admin pertama, ganti <span class="mono">OWNER_EMAIL_HERE</span> dengan email Anda.
+          </div>
+
+          <div class="grid gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <div class="text-sm font-semibold">Rules (Recommended • Role-based)</div>
+              <button id="btnCopyRulesProd" class="rounded-xl border bg-white px-3 py-1.5 text-xs hover:bg-slate-50">Copy</button>
+            </div>
+            <textarea id="rulesProd" class="mono min-h-[190px] w-full rounded-2xl border bg-slate-50 p-3 text-[12px]" readonly></textarea>
+            <div class="text-[11px] text-slate-500">Mode ini: customer bisa buat order & update <span class="mono">wa/sentAt</span> order miliknya. Produk/pembelian/biaya hanya admin.</div>
+          </div>
+
+          <div class="grid gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <div class="text-sm font-semibold">Rules (Development • Longgar)</div>
+              <button id="btnCopyRulesDev" class="rounded-xl border bg-white px-3 py-1.5 text-xs hover:bg-slate-50">Copy</button>
+            </div>
+            <textarea id="rulesDev" class="mono min-h-[110px] w-full rounded-2xl border bg-slate-50 p-3 text-[12px]" readonly></textarea>
+            <div class="text-[11px] text-amber-700">Hanya untuk testing cepat. Jangan dipakai produksi.</div>
+          </div>
+        </div>
+      </details>
+
+      <div class="grid gap-3 md:grid-cols-2">
+        <div class="grid gap-1">
+          <label class="text-xs font-medium text-slate-600">apiKey</label>
+          <input id="cfgApiKey" class="rounded-xl border px-3 py-2 mono" placeholder="AIza..." />
+        </div>
+        <div class="grid gap-1">
+          <label class="text-xs font-medium text-slate-600">authDomain</label>
+          <input id="cfgAuthDomain" class="rounded-xl border px-3 py-2 mono" placeholder="project.firebaseapp.com" />
+        </div>
+        <div class="grid gap-1">
+          <label class="text-xs font-medium text-slate-600">databaseURL</label>
+          <input id="cfgDatabaseURL" class="rounded-xl border px-3 py-2 mono" placeholder="https://project-default-rtdb.asia-southeast1.firebasedatabase.app" />
+        </div>
+        <div class="grid gap-1">
+          <label class="text-xs font-medium text-slate-600">projectId</label>
+          <input id="cfgProjectId" class="rounded-xl border px-3 py-2 mono" placeholder="project-id" />
+        </div>
+        <div class="grid gap-1">
+          <label class="text-xs font-medium text-slate-600">appId</label>
+          <input id="cfgAppId" class="rounded-xl border px-3 py-2 mono" placeholder="1:...:web:..." />
+        </div>
+        <div class="grid gap-1">
+          <label class="text-xs font-medium text-slate-600">storageBucket (opsional)</label>
+          <input id="cfgStorageBucket" class="rounded-xl border px-3 py-2 mono" placeholder="project.appspot.com" />
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-2 justify-end">
+        <button id="btnResetCloud" class="rounded-xl border bg-white px-4 py-2 text-sm hover:bg-slate-50">Reset ke Demo Lokal</button>
+        <button id="btnSaveCloud" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Simpan & Reload</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Product Dialog -->
+  <dialog id="productDialog" class="w-[min(720px,92vw)] rounded-3xl border bg-white p-0">
+    <div class="border-b px-5 py-4 flex items-start justify-between gap-4">
+      <div>
+        <div id="productDlgTitle" class="text-lg font-semibold">Produk</div>
+        <div class="text-sm text-slate-600">Tambah atau edit produk buah.</div>
+      </div>
+      <button id="btnCloseProductDlg" class="rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50">Tutup</button>
+    </div>
+    <div class="p-5 grid gap-4">
+      <div class="grid gap-3 md:grid-cols-2">
+        <div class="grid gap-1">
+          <label class="text-xs font-medium text-slate-600">Nama</label>
+          <input id="pName" class="rounded-xl border px-3 py-2" placeholder="Mangga" />
+        </div>
+        <div class="grid gap-1">
+          <label class="text-xs font-medium text-slate-600">Unit</label>
+          <input id="pUnit" class="rounded-xl border px-3 py-2" placeholder="kg / pcs" value="kg" />
+        </div>
+        <div class="grid gap-1">
+          <label class="text-xs font-medium text-slate-600">Harga Jual (Rp)</label>
+          <input id="pPrice" type="number" min="0" class="rounded-xl border px-3 py-2" value="0" />
+        </div>
+        <div class="grid gap-1">
+          <label class="text-xs font-medium text-slate-600">Stok Awal</label>
+          <input id="pStock" type="number" min="0" class="rounded-xl border px-3 py-2" value="0" />
+        </div>
+        <div class="grid gap-1 md:col-span-2">
+          <label class="text-xs font-medium text-slate-600">URL Gambar (opsional)</label>
+          <input id="pImg" class="rounded-xl border px-3 py-2" placeholder="https://..." />
+        </div>
+        <div class="flex items-center gap-2 md:col-span-2">
+          <input id="pActive" type="checkbox" class="h-4 w-4" checked />
+          <label for="pActive" class="text-sm">Aktif (muncul di toko)</label>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2 justify-end">
+        <button id="btnDeleteProduct" class="hidden rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm text-rose-700 hover:bg-rose-50">Hapus</button>
+        <button id="btnSaveProduct" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Simpan</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="toasts" class="fixed bottom-4 right-4 z-50 grid gap-2"></div>
+
+  <script>
+    /*********************
+     * CONFIG
+     *********************/
+    const ADMIN_EMAILS = [
+      // Tambahkan email admin di sini untuk demo cepat.
+      // Contoh: "admin@tokobuah.com"
+    ];
+
+    const STORAGE_KEYS = {
+      cloudCfg: 'tokobuah.firebaseConfig.v1',
+      cart: 'tokobuah.cart.v1',
+      demoSeeded: 'tokobuah.demoSeeded.v1'
+    };
+
+    const DEFAULT_FIREBASE_CONFIG = {
+      apiKey: "",
+      authDomain: "",
+      databaseURL: "",
+      projectId: "",
+      storageBucket: "",
+      appId: ""
+    };
+
+    function loadCloudConfig(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEYS.cloudCfg);
+        if(!raw) return { ...DEFAULT_FIREBASE_CONFIG };
+        const cfg = JSON.parse(raw);
+        return { ...DEFAULT_FIREBASE_CONFIG, ...cfg };
+      }catch{
+        return { ...DEFAULT_FIREBASE_CONFIG };
+      }
+    }
+
+    function hasCloudConfig(cfg){
+      return !!(cfg.apiKey && cfg.authDomain && cfg.databaseURL && cfg.projectId && cfg.appId);
+    }
+
+    const firebaseConfig = loadCloudConfig();
+    const MODE = hasCloudConfig(firebaseConfig) ? 'CLOUD' : 'LOCAL_DEMO';
+
+    /*********************
+     * UI HELPERS
+     *********************/
+    const $ = (q, el=document) => el.querySelector(q);
+    const $$ = (q, el=document) => Array.from(el.querySelectorAll(q));
+
+    function rupiah(n){
+      n = Number(n || 0);
+      return 'Rp ' + n.toLocaleString('id-ID');
+    }
+
+    function fmtTime(ts){
+      const d = new Date(ts || Date.now());
+      return d.toLocaleString('id-ID', { hour12: false });
+    }
+
+    function uid(prefix='id'){
+      return prefix + '_' + Math.random().toString(16).slice(2) + '_' + Date.now().toString(16);
+    }
+
+    function toast(msg, type='info'){
+      const colors = {
+        info: 'border-slate-200 bg-white text-slate-800',
+        ok: 'border-green-200 bg-green-50 text-green-900',
+        warn: 'border-amber-200 bg-amber-50 text-amber-900',
+        err: 'border-rose-200 bg-rose-50 text-rose-900'
+      };
+      const el = document.createElement('div');
+      el.className = `toast max-w-sm rounded-2xl border px-4 py-3 text-sm shadow-sm ${colors[type] || colors.info}`;
+      el.textContent = msg;
+      $('#toasts').appendChild(el);
+      setTimeout(()=>{ el.style.opacity = '0'; el.style.transition = 'opacity .2s'; }, 2800);
+      setTimeout(()=>{ el.remove(); }, 3200);
+    }
+
+    function setConn(status, detail=''){
+      $('#connBadge').classList.remove('hidden');
+      const map = {
+        ok: { dot:'bg-green-500', text:'Terhubung' },
+        warn: { dot:'bg-amber-500', text:'Mode demo lokal' },
+        err: { dot:'bg-rose-500', text:'Terputus' },
+        busy: { dot:'bg-slate-400', text:'Menghubungkan…' }
+      };
+      const s = map[status] || map.busy;
+      $('#connDot').className = `h-2 w-2 rounded-full ${s.dot}`;
+      $('#connText').textContent = detail ? `${s.text} • ${detail}` : s.text;
+    }
+
+    function sanitizePhone(p){
+      p = String(p||'').replace(/[^0-9]/g,'');
+      if(p.startsWith('0')) p = '62' + p.slice(1);
+      if(p.startsWith('8')) p = '62' + p;
+      return p;
+    }
+
+    function waLink(phone, text){
+      const p = sanitizePhone(phone);
+      const base = `https://wa.me/${encodeURIComponent(p)}`;
+      const t = encodeURIComponent(text || '');
+      return `${base}?text=${t}`;
+    }
+
+    /*********************
+     * DATA LAYER (Firebase or Local Demo)
+     *********************/
+
+    // Local demo: uses localStorage + BroadcastChannel for realtime across tabs.
+    class LocalRealtimeDB {
+      constructor(prefix='tokobuah'){ this.prefix = prefix; this.bc = new BroadcastChannel(prefix); }
+      _key(path){ return `${this.prefix}:${path}`; }
+      _read(path){
+        const raw = localStorage.getItem(this._key(path));
+        return raw ? JSON.parse(raw) : null;
+      }
+      _write(path, value){
+        localStorage.setItem(this._key(path), JSON.stringify(value));
+        this.bc.postMessage({ type:'changed', path });
+      }
+      get(path){ return Promise.resolve(this._read(path)); }
+      set(path, value){ this._write(path, value); return Promise.resolve(); }
+      update(path, patch){
+        const cur = this._read(path) || {};
+        const next = { ...cur, ...patch };
+        this._write(path, next);
+        return Promise.resolve();
+      }
+      remove(path){
+        localStorage.removeItem(this._key(path));
+        this.bc.postMessage({ type:'changed', path });
+        return Promise.resolve();
+      }
+      push(path, value){
+        const id = uid('p');
+        const cur = this._read(path) || {};
+        cur[id] = value;
+        this._write(path, cur);
+        return Promise.resolve({ key: id });
+      }
+      onValue(path, cb){
+        const fire = async ()=> cb(await this.get(path));
+        fire();
+        const handler = (ev)=>{ if(ev.data?.type==='changed'){
+            // naive: refresh if same path or child path
+            if(ev.data.path === path || ev.data.path.startsWith(path+'/') || path.startsWith(ev.data.path+'/')) fire();
+        }};
+        this.bc.addEventListener('message', handler);
+        // Also watch storage changes (other tabs)
+        const storageHandler = (e)=>{ if(e.key && e.key.startsWith(this._key(''))){ fire(); } };
+        window.addEventListener('storage', storageHandler);
+        return ()=>{ this.bc.removeEventListener('message', handler); window.removeEventListener('storage', storageHandler); };
+      }
+      // Transaction for numeric fields (best-effort in local demo)
+      async increment(path, delta){
+        const cur = (await this.get(path)) ?? 0;
+        const next = Number(cur) + Number(delta);
+        if(next < 0) throw new Error('Stok tidak cukup');
+        await this.set(path, next);
+        return next;
+      }
+    }
+
+    // Local demo auth
+    class LocalAuth {
+      constructor(){ this.user = null; this.listeners = []; this.key='tokobuah:localAuthUser'; this._load(); }
+      _load(){
+        try{ const raw = localStorage.getItem(this.key); this.user = raw? JSON.parse(raw): null; }catch{ this.user=null; }
+        setTimeout(()=>this._emit(),0);
+      }
+      _emit(){ this.listeners.forEach(fn=>fn(this.user)); }
+      onAuthStateChanged(fn){ this.listeners.push(fn); fn(this.user); return ()=>{ this.listeners=this.listeners.filter(x=>x!==fn);} }
+      async createUserWithEmailAndPassword(email, password){
+        const uidv = uid('u');
+        this.user = { uid: uidv, email };
+        localStorage.setItem(this.key, JSON.stringify(this.user));
+        this._emit();
+        return { user: this.user };
+      }
+      async signInWithEmailAndPassword(email, password){
+        // demo: any email can sign in; stable uid based on email
+        const uidv = 'u_' + btoa(email).replace(/=+/g,'').slice(0,24);
+        this.user = { uid: uidv, email };
+        localStorage.setItem(this.key, JSON.stringify(this.user));
+        this._emit();
+        return { user: this.user };
+      }
+      async signOut(){ this.user=null; localStorage.removeItem(this.key); this._emit(); }
+    }
+
+    let auth = null;
+    let rtdb = null;
+    let fbApp = null;
+    let fbDb = null;
+
+    function initBackend(){
+      if(MODE === 'CLOUD'){
+        fbApp = firebase.initializeApp(firebaseConfig);
+        auth = firebase.auth();
+        fbDb = firebase.database();
+        rtdb = {
+          get: (path)=> fbDb.ref(path).get().then(s=>s.exists()? s.val(): null),
+          set: (path, value)=> fbDb.ref(path).set(value),
+          update: (path, patch)=> fbDb.ref(path).update(patch),
+          remove: (path)=> fbDb.ref(path).remove(),
+          push: (path, value)=> {
+            const ref = fbDb.ref(path).push();
+            return ref.set(value).then(()=>({ key: ref.key }));
+          },
+          onValue: (path, cb)=>{
+            const ref = fbDb.ref(path);
+            const fn = (snap)=> cb(snap.exists()? snap.val(): null);
+            ref.on('value', fn);
+            return ()=> ref.off('value', fn);
+          },
+          // Query helper: ambil order khusus milik user
+          onOrdersForUser: (uid, cb)=>{
+            const ref = fbDb.ref('orders').orderByChild('customerUid').equalTo(uid);
+            const fn = (snap)=> cb(snap.exists()? snap.val(): null);
+            ref.on('value', fn);
+            return ()=> ref.off('value', fn);
+          },
+          increment: async (path, delta)=>{
+            const ref = fbDb.ref(path);
+            const res = await ref.transaction(cur => {
+              const next = (Number(cur||0) + Number(delta));
+              if(next < 0) return; // abort
+              return next;
+            });
+            if(!res.committed) throw new Error('Stok tidak cukup / transaksi stok ditolak');
+            return res.snapshot.val();
+          }
+        };
+        setConn('ok', 'Cloud');
+      } else {
+        auth = new LocalAuth();
+        rtdb = new LocalRealtimeDB('tokobuah');
+        // Query helper local (filter di client)
+        rtdb.onOrdersForUser = (uid, cb)=> rtdb.onValue('orders', (v)=>{
+          const all = v || {};
+          const filtered = {};
+          for(const [id,o] of Object.entries(all)){
+            if(o?.customerUid === uid) filtered[id] = o;
+          }
+          cb(filtered);
+        });
+        setConn('warn', 'Demo Lokal');
+      }
+
+      $('#modeText').textContent = MODE;
+      $('#bannerCloud').classList.toggle('hidden', MODE==='CLOUD');
+
+      // connection badge
+      $('#btnOpenSetup').classList.toggle('hidden', false);
+    }
+
+    initBackend();
+
+    /*********************
+     * STATE
+     *********************/
+    const state = {
+      user: null,
+      profile: null,
+      role: 'customer',
+      products: {},
+      orders: {},
+      purchases: {},
+      expenses: {},
+      users: {},
+      cart: {},
+      unsub: [],
+      ui: {
+        activeTab: 'shop',
+        adminTab: 'produk',
+        editingProductId: null,
+        purchaseRows: []
+      }
+    };
+
+    function loadCart(){
+      try{ state.cart = JSON.parse(localStorage.getItem(STORAGE_KEYS.cart) || '{}') || {}; }
+      catch{ state.cart = {}; }
+    }
+    function saveCart(){ localStorage.setItem(STORAGE_KEYS.cart, JSON.stringify(state.cart)); }
+
+    loadCart();
+
+    /*********************
+     * ACCESS CONTROL (UI level)
+     *********************/
+    function isAdmin(){ return state.role === 'admin'; }
+
+    async function ensureProfile(user){
+      const path = `users/${user.uid}`;
+      const prof = await rtdb.get(path);
+      if(prof){
+        state.profile = prof;
+        state.role = prof.role || 'customer';
+        return;
+      }
+
+      // bootstrap admin pertama:
+      // - jika email masuk ADMIN_EMAILS (hardcoded), admin
+      // - atau jika user pertama di database (tidak ada users sama sekali), admin
+      // Catatan: ini tetap perlu Rules yang aman (lihat Setup Cloud) untuk produksi.
+      let role = ADMIN_EMAILS.includes(user.email) ? 'admin' : 'customer';
+      try{
+        const allUsers = await rtdb.get('users');
+        if(!allUsers || Object.keys(allUsers).length===0) role = 'admin';
+      }catch{}
+
+      const newProf = {
+        email: user.email,
+        name: user.displayName || user.email?.split('@')[0] || 'User',
+        role,
+        createdAt: Date.now()
+      };
+      await rtdb.set(path, newProf);
+      state.profile = newProf;
+      state.role = role;
+    }
+
+    /*********************
+     * REALTIME SUBSCRIPTIONS
+     *********************/
+    function clearSubs(){ state.unsub.forEach(fn=>{ try{fn();}catch{} }); state.unsub = []; }
+
+    function subscribeAll(){
+      clearSubs();
+
+      // Produk: readable by all logged-in
+      state.unsub.push(rtdb.onValue('products', (v)=>{ state.products = v || {}; renderProducts(); renderAdminProducts(); renderPurchaseRows(); renderCart(); }));
+
+      // Orders:
+      // - customer: subscribe hanya order miliknya (pakai query agar cocok rules)
+      // - admin: subscribe semua order
+      if(state.user && !isAdmin()){
+        state.unsub.push(rtdb.onOrdersForUser(state.user.uid, (v)=>{ state.orders = v || {}; renderMyOrders(); renderAdminOrders(); renderReport(); }));
+      } else {
+        state.unsub.push(rtdb.onValue('orders', (v)=>{ state.orders = v || {}; renderMyOrders(); renderAdminOrders(); renderReport(); }));
+      }
+
+      // Admin-only subscriptions (hindari permission error untuk customer)
+      if(isAdmin()){
+        state.unsub.push(rtdb.onValue('purchases', (v)=>{ state.purchases = v || {}; renderPurchases(); renderReport(); }));
+        state.unsub.push(rtdb.onValue('expenses', (v)=>{ state.expenses = v || {}; renderExpenses(); renderReport(); }));
+        state.unsub.push(rtdb.onValue('users', (v)=>{ state.users = v || {}; renderUsers(); }));
+        state.unsub.push(rtdb.onValue('logs/mini', (v)=>{ renderMiniLog(v || {}); }));
+      } else {
+        // clear admin-only views
+        state.purchases = {}; state.expenses = {}; state.users = {};
+        renderPurchases(); renderExpenses(); renderUsers();
+        // mini log: customer tidak subscribe
+        renderMiniLog({});
+      }
+    }
+
+    async function appendMiniLog(event){
+      const id = uid('log');
+      const payload = { at: Date.now(), ...event };
+      // Keep it small: store last ~60 in a flat map
+      const path = `logs/mini/${id}`;
+      await rtdb.set(path, payload);
+      // cleanup best-effort
+      const all = await rtdb.get('logs/mini');
+      const entries = Object.entries(all || {}).sort((a,b)=> (a[1].at||0) - (b[1].at||0));
+      const excess = entries.length - 60;
+      for(let i=0;i<excess;i++){
+        await rtdb.remove(`logs/mini/${entries[i][0]}`);
+      }
+    }
+
+    /*********************
+     * RENDERERS
+     *********************/
+    function productCard(pId, p){
+      const stock = Number(p.stock||0);
+      const disabled = (!p.active) || stock<=0;
+      const img = p.imageUrl || 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><defs><linearGradient id="g" x1="0" x2="1"><stop stop-color="#22c55e"/><stop offset="1" stop-color="#a3e635"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/><text x="50%" y="55%" text-anchor="middle" font-family="ui-sans-serif" font-size="44" fill="white" font-weight="700">${(p.name||'Buah').slice(0,10)}</text></svg>`);
+
+      return `
+        <div class="rounded-3xl border bg-white overflow-hidden">
+          <div class="h-36 bg-slate-100">
+            <img src="${img}" alt="${escapeHtml(p.name||'Produk')}" class="h-36 w-full object-cover" />
+          </div>
+          <div class="p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="font-semibold truncate">${escapeHtml(p.name||'-')}</div>
+                <div class="text-xs text-slate-500">${rupiah(p.price||0)} / ${escapeHtml(p.unit||'unit')} • Stok: <span class="font-medium">${stock}</span></div>
+              </div>
+              <span class="text-[11px] rounded-full border px-2 py-1 ${p.active? 'bg-green-50 border-green-200 text-green-700':'bg-slate-50 border-slate-200 text-slate-600'}">${p.active? 'Aktif':'Nonaktif'}</span>
+            </div>
+            <div class="mt-4 flex items-center gap-2">
+              <button class="btnAdd rounded-xl px-4 py-2 text-sm font-medium ${disabled? 'bg-slate-100 text-slate-400 cursor-not-allowed':'bg-green-600 text-white hover:bg-green-700'}" data-id="${pId}" ${disabled?'disabled':''}>Tambah</button>
+              <button class="btnAddMany rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50" data-id="${pId}" ${disabled?'disabled':''}>+5</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderProducts(){
+      const q = ($('#search').value || '').toLowerCase().trim();
+      const entries = Object.entries(state.products || {})
+        .filter(([id,p])=> (p?.active) && (!q || (p.name||'').toLowerCase().includes(q)))
+        .sort((a,b)=> (a[1].name||'').localeCompare(b[1].name||''));
+
+      if(entries.length===0){
+        $('#productsGrid').innerHTML = `
+          <div class="sm:col-span-2 xl:col-span-3 rounded-3xl border bg-white p-6 text-center">
+            <div class="font-semibold">Belum ada produk aktif</div>
+            <div class="text-sm text-slate-600">Admin bisa menambahkan produk di tab Admin → Produk.</div>
+          </div>
+        `;
+        return;
+      }
+      $('#productsGrid').innerHTML = entries.map(([id,p])=> productCard(id,p)).join('');
+
+      $$('.btnAdd', $('#productsGrid')).forEach(btn=> btn.addEventListener('click', ()=> addToCart(btn.dataset.id, 1)));
+      $$('.btnAddMany', $('#productsGrid')).forEach(btn=> btn.addEventListener('click', ()=> addToCart(btn.dataset.id, 5)));
+    }
+
+    function renderCart(){
+      const cartEntries = Object.entries(state.cart || {});
+      const lines = [];
+      let subtotal = 0;
+      let itemsCount = 0;
+
+      for(const [pId, qty] of cartEntries){
+        const p = state.products?.[pId];
+        if(!p) continue;
+        const q = Number(qty||0);
+        if(q<=0) continue;
+        const price = Number(p.price||0);
+        const line = price*q;
+        subtotal += line;
+        itemsCount += q;
+        const maxStock = Number(p.stock||0);
+        lines.push({pId, p, q, price, line, maxStock});
+      }
+
+      if(lines.length===0){
+        $('#cartList').innerHTML = `
+          <div class="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-600">
+            Keranjang kosong. Tambahkan buah dari katalog.
+          </div>
+        `;
+      } else {
+        $('#cartList').innerHTML = lines.map(({pId,p,q,line,maxStock})=>`
+          <div class="rounded-2xl border p-3">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="font-semibold truncate">${escapeHtml(p.name||'-')}</div>
+                <div class="text-xs text-slate-500">${rupiah(p.price||0)} / ${escapeHtml(p.unit||'unit')} • Stok: ${maxStock}</div>
+              </div>
+              <div class="text-sm font-semibold">${rupiah(line)}</div>
+            </div>
+            <div class="mt-3 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <button class="btnQty rounded-xl border bg-white px-2 py-1 text-sm hover:bg-slate-50" data-id="${pId}" data-d="-1">-</button>
+                <input class="qtyInput w-16 rounded-xl border px-2 py-1 text-sm" data-id="${pId}" type="number" min="1" max="${Math.max(1,maxStock)}" value="${q}" />
+                <button class="btnQty rounded-xl border bg-white px-2 py-1 text-sm hover:bg-slate-50" data-id="${pId}" data-d="1">+</button>
+              </div>
+              <button class="btnRemove rounded-xl border border-rose-200 bg-rose-50 px-3 py-1 text-xs text-rose-800 hover:bg-rose-100" data-id="${pId}">Hapus</button>
+            </div>
+          </div>
+        `).join('');
+
+        $$('.btnQty', $('#cartList')).forEach(b=> b.addEventListener('click', ()=> addToCart(b.dataset.id, Number(b.dataset.d))));
+        $$('.btnRemove', $('#cartList')).forEach(b=> b.addEventListener('click', ()=> setCartQty(b.dataset.id, 0)));
+        $$('.qtyInput', $('#cartList')).forEach(inp=> inp.addEventListener('change', ()=>{
+          const id = inp.dataset.id;
+          const p = state.products?.[id];
+          const max = Number(p?.stock||999999);
+          let v = Number(inp.value||1);
+          if(v<1) v=1;
+          if(v>max) v=max;
+          setCartQty(id, v);
+        }));
+      }
+
+      $('#cartSubtotal').textContent = rupiah(subtotal);
+      $('#cartItemsCount').textContent = `${itemsCount} item`;
+      // sync checkout numbers
+      const shipCost = Number($('#ckShipCost').value||0);
+      $('#ckSubtotal').textContent = rupiah(subtotal);
+      $('#ckTotal').textContent = rupiah(subtotal + shipCost);
+    }
+
+    function renderMyOrders(){
+      if(!state.user){ $('#myOrdersList').innerHTML = ''; return; }
+      const orders = Object.entries(state.orders || {})
+        .filter(([id,o])=> o?.customerUid === state.user.uid)
+        .sort((a,b)=> (b[1].createdAt||0) - (a[1].createdAt||0));
+
+      if(orders.length===0){
+        $('#myOrdersList').innerHTML = `
+          <div class="rounded-3xl border bg-white p-6 text-center">
+            <div class="font-semibold">Belum ada pesanan</div>
+            <div class="text-sm text-slate-600">Buat pesanan dari tab Toko.</div>
+          </div>
+        `;
+        return;
+      }
+
+      $('#myOrdersList').innerHTML = orders.map(([id,o])=> renderOrderCard(id,o,false)).join('');
+      wireOrderCardActions($('#myOrdersList'), false);
+    }
+
+    function statusBadge(status){
+      const map = {
+        CREATED: 'bg-slate-50 border-slate-200 text-slate-700',
+        CONFIRMED: 'bg-blue-50 border-blue-200 text-blue-800',
+        PACKED: 'bg-indigo-50 border-indigo-200 text-indigo-800',
+        SHIPPED: 'bg-amber-50 border-amber-200 text-amber-900',
+        DONE: 'bg-green-50 border-green-200 text-green-800',
+        CANCELLED: 'bg-rose-50 border-rose-200 text-rose-800'
+      };
+      const cls = map[status] || map.CREATED;
+      return `<span class="rounded-full border px-2 py-1 text-[11px] ${cls}">${escapeHtml(status||'CREATED')}</span>`;
+    }
+
+    function renderOrderCard(id, o, admin){
+      const items = o.items || [];
+      const lines = items.map(it=>{
+        const p = state.products?.[it.productId] || { name: it.name || '(produk dihapus)', unit: it.unit || '' };
+        return `<li class="flex items-center justify-between gap-3"><span class="truncate">${escapeHtml(p.name||it.name||'-')} <span class="text-slate-400">×</span> ${Number(it.qty||0)} ${escapeHtml(p.unit||it.unit||'')}</span><span class="text-slate-600">${rupiah(Number(it.price||0)*Number(it.qty||0))}</span></li>`;
+      }).join('');
+
+      const wa = o.wa || {};
+      const waBtn = wa?.link ? `
+        <a class="btnWA inline-flex items-center justify-center rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700" data-id="${id}" href="${wa.link}" target="_blank" rel="noopener">Kirim WA</a>
+      ` : '';
+
+      const adminControls = admin ? `
+        <div class="mt-3 grid gap-2 md:grid-cols-2">
+          <div class="grid gap-1">
+            <label class="text-xs font-medium text-slate-600">Ubah status</label>
+            <select class="ordStatus rounded-xl border bg-white px-3 py-2 text-sm" data-id="${id}">
+              ${['CREATED','CONFIRMED','PACKED','SHIPPED','DONE','CANCELLED'].map(s=> `<option value="${s}" ${String(o.status||'CREATED')===s?'selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>
+          <div class="grid gap-1">
+            <label class="text-xs font-medium text-slate-600">Catatan admin</label>
+            <input class="ordNote rounded-xl border px-3 py-2 text-sm" data-id="${id}" placeholder="(opsional)" />
+          </div>
+          <div class="md:col-span-2 flex gap-2 justify-end">
+            <button class="btnUpdateOrder rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800" data-id="${id}">Simpan Status</button>
+          </div>
+        </div>
+      ` : '';
+
+      return `
+        <div class="rounded-3xl border bg-white p-5">
+          <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <div class="font-semibold truncate">Order <span class="mono">${escapeHtml(id)}</span></div>
+                ${statusBadge(o.status || 'CREATED')}
+              </div>
+              <div class="mt-1 text-sm text-slate-600">${fmtTime(o.createdAt)} • ${escapeHtml(o.customerName||'-')} • WA: <span class="mono">${escapeHtml(o.customerPhone||'-')}</span></div>
+              ${admin ? `<div class="mt-1 text-xs text-slate-500">UID: <span class="mono">${escapeHtml(o.customerUid||'-')}</span></div>` : ''}
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-slate-500">Total</div>
+              <div class="text-xl font-semibold">${rupiah(o.total||0)}</div>
+              <div class="text-xs text-slate-500">Ongkir: ${rupiah(o.shipping?.cost||0)} • ${escapeHtml(o.shipping?.method||'-')}</div>
+            </div>
+          </div>
+
+          <div class="mt-4 grid gap-4 md:grid-cols-2">
+            <div class="rounded-2xl border bg-slate-50 p-4">
+              <div class="text-xs font-semibold text-slate-600">Item</div>
+              <ul class="mt-2 grid gap-1 text-sm">${lines || '<li class="text-slate-500">(kosong)</li>'}</ul>
+              <div class="mt-3 border-t pt-2 text-sm">
+                <div class="flex items-center justify-between"><span class="text-slate-600">Subtotal</span><span class="font-medium">${rupiah(o.subtotal||0)}</span></div>
+                <div class="flex items-center justify-between"><span class="text-slate-600">Ongkir</span><span class="font-medium">${rupiah(o.shipping?.cost||0)}</span></div>
+              </div>
+            </div>
+            <div class="rounded-2xl border bg-slate-50 p-4">
+              <div class="text-xs font-semibold text-slate-600">Pengiriman & Konfirmasi</div>
+              <div class="mt-2 text-sm text-slate-700">
+                <div><span class="text-slate-500">Alamat:</span> ${escapeHtml(o.shipping?.address||'-')}</div>
+              </div>
+              <div class="mt-3 flex flex-wrap gap-2">
+                ${waBtn}
+                ${wa.sentAt ? `<span class="inline-flex items-center rounded-xl border bg-white px-3 py-2 text-xs text-slate-600">WA tercatat: <span class="mono ml-1">${fmtTime(wa.sentAt)}</span></span>`:''}
+              </div>
+              <div class="mt-3">
+                <details class="rounded-2xl border bg-white p-3">
+                  <summary class="cursor-pointer text-sm font-medium">Riwayat status</summary>
+                  <div class="mt-2 grid gap-2 text-xs text-slate-700">
+                    ${(o.history||[]).slice().reverse().map(h=>`
+                      <div class="rounded-xl border bg-slate-50 p-2">
+                        <div class="flex items-center justify-between gap-3">
+                          <span class="mono">${fmtTime(h.at)}</span>
+                          <span class="font-semibold">${escapeHtml(h.action||'')}</span>
+                        </div>
+                        <div class="text-slate-600">oleh: <span class="mono">${escapeHtml(h.by||'-')}</span>${h.note? ` • catatan: ${escapeHtml(h.note)}`:''}</div>
+                      </div>
+                    `).join('') || '<div class="text-slate-500">Belum ada riwayat.</div>'}
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+
+          ${adminControls}
+        </div>
+      `;
+    }
+
+    function wireOrderCardActions(root, admin){
+      $$('.btnWA', root).forEach(a=>{
+        a.addEventListener('click', async ()=>{
+          const id = a.dataset.id;
+          try{
+            // Agar kompatibel dengan Rules yang aman, update hanya field sentAt.
+            await rtdb.set(`orders/${id}/wa/sentAt`, Date.now());
+            await appendMiniLog({ type:'WA_CLICK', ref:`orders/${id}`, by: state.user?.email || 'anon' });
+          }catch(e){ toast('Gagal mencatat WA: ' + e.message, 'err'); }
+        });
+      });
+
+      if(admin){
+        $$('.btnUpdateOrder', root).forEach(btn=> btn.addEventListener('click', ()=> updateOrderStatus(btn.dataset.id)));
+      }
+    }
+
+    function renderAdminOrders(){
+      if(!isAdmin()){ $('#adminOrders').innerHTML = `<div class="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-600">Hanya admin.</div>`; return; }
+      const orders = Object.entries(state.orders || {})
+        .sort((a,b)=> (b[1].createdAt||0) - (a[1].createdAt||0));
+
+      if(orders.length===0){
+        $('#adminOrders').innerHTML = `<div class="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-600">Belum ada pesanan.</div>`;
+        return;
+      }
+      $('#adminOrders').innerHTML = orders.map(([id,o])=> renderOrderCard(id,o,true)).join('');
+      wireOrderCardActions($('#adminOrders'), true);
+    }
+
+    function renderAdminProducts(){
+      if(!isAdmin()){ $('#adminProducts').innerHTML = `<div class="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-600">Hanya admin.</div>`; return; }
+      const entries = Object.entries(state.products || {})
+        .sort((a,b)=> (a[1].name||'').localeCompare(b[1].name||''));
+
+      if(entries.length===0){
+        $('#adminProducts').innerHTML = `<div class="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-600">Belum ada produk. Klik <b>+ Produk</b>.</div>`;
+        return;
+      }
+      $('#adminProducts').innerHTML = entries.map(([id,p])=>`
+        <div class="rounded-2xl border p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <div class="font-semibold truncate">${escapeHtml(p.name||'-')}</div>
+                <span class="text-[11px] rounded-full border px-2 py-1 ${p.active? 'bg-green-50 border-green-200 text-green-700':'bg-slate-50 border-slate-200 text-slate-600'}">${p.active? 'Aktif':'Nonaktif'}</span>
+              </div>
+              <div class="mt-1 text-sm text-slate-600">Harga: <b>${rupiah(p.price||0)}</b> / ${escapeHtml(p.unit||'unit')} • Stok: <b>${Number(p.stock||0)}</b></div>
+              <div class="mt-1 text-xs text-slate-500">ID: <span class="mono">${escapeHtml(id)}</span></div>
+            </div>
+            <div class="flex gap-2">
+              <button class="btnEditProd rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50" data-id="${id}">Edit</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      $$('.btnEditProd', $('#adminProducts')).forEach(btn=> btn.addEventListener('click', ()=> openProductDialog(btn.dataset.id)));
+    }
+
+    function purchaseItemRow(rowId, item){
+      const options = Object.entries(state.products || {})
+        .sort((a,b)=> (a[1].name||'').localeCompare(b[1].name||''))
+        .map(([id,p])=> `<option value="${id}" ${item.productId===id?'selected':''}>${escapeHtml(p.name||id)}</option>`)
+        .join('');
+
+      const qty = Number(item.qty||0);
+      const cost = Number(item.cost||0);
+      const sub = qty*cost;
+      return `
+        <tr data-row="${rowId}" class="border-t">
+          <td class="p-3">
+            <select class="purProd w-full rounded-xl border bg-white px-3 py-2 text-sm" data-row="${rowId}">
+              <option value="">Pilih produk…</option>
+              ${options}
+            </select>
+          </td>
+          <td class="p-3"><input class="purQty w-24 rounded-xl border px-3 py-2 text-sm" type="number" min="0" value="${qty}" data-row="${rowId}" /></td>
+          <td class="p-3"><input class="purCost w-36 rounded-xl border px-3 py-2 text-sm" type="number" min="0" value="${cost}" data-row="${rowId}" /></td>
+          <td class="p-3"><span class="font-semibold">${rupiah(sub)}</span></td>
+          <td class="p-3 text-right"><button class="btnDelPurchaseRow rounded-xl border bg-white px-3 py-2 text-sm hover:bg-slate-50" data-row="${rowId}">Hapus</button></td>
+        </tr>
+      `;
+    }
+
+    function renderPurchaseRows(){
+      if(!isAdmin()) return;
+      if(state.ui.purchaseRows.length===0){
+        state.ui.purchaseRows.push({ rowId: uid('row'), productId:'', qty:0, cost:0 });
+      }
+      $('#purchaseItems').innerHTML = state.ui.purchaseRows.map(r=> purchaseItemRow(r.rowId, r)).join('');
+      // wire
+      $$('.purProd', $('#purchaseItems')).forEach(sel=> sel.addEventListener('change', ()=>{
+        const rowId = sel.dataset.row;
+        const row = state.ui.purchaseRows.find(x=>x.rowId===rowId);
+        row.productId = sel.value;
+        computePurchaseTotals();
+      }));
+      $$('.purQty', $('#purchaseItems')).forEach(inp=> inp.addEventListener('input', ()=>{
+        const row = state.ui.purchaseRows.find(x=>x.rowId===inp.dataset.row);
+        row.qty = Number(inp.value||0);
+        computePurchaseTotals();
+      }));
+      $$('.purCost', $('#purchaseItems')).forEach(inp=> inp.addEventListener('input', ()=>{
+        const row = state.ui.purchaseRows.find(x=>x.rowId===inp.dataset.row);
+        row.cost = Number(inp.value||0);
+        computePurchaseTotals();
+      }));
+      $$('.btnDelPurchaseRow', $('#purchaseItems')).forEach(btn=> btn.addEventListener('click', ()=>{
+        state.ui.purchaseRows = state.ui.purchaseRows.filter(x=>x.rowId!==btn.dataset.row);
+        renderPurchaseRows();
+        computePurchaseTotals();
+      }));
+
+      computePurchaseTotals();
+    }
+
+    function computePurchaseTotals(){
+      const items = state.ui.purchaseRows
+        .filter(r=> r.productId && Number(r.qty)>0)
+        .map(r=> ({...r, qty:Number(r.qty), cost:Number(r.cost)}));
+      const totalItems = items.reduce((a,b)=> a + (b.qty*b.cost), 0);
+      const ship = Number($('#purShipCost').value||0);
+      const other = Number($('#purOtherCost').value||0);
+      const grand = totalItems + ship + other;
+      $('#purItemsTotal').textContent = rupiah(totalItems);
+      $('#purGrandTotal').textContent = rupiah(grand);
+    }
+
+    function renderPurchases(){
+      if(!isAdmin()) return;
+      const list = Object.entries(state.purchases || {})
+        .sort((a,b)=> (b[1].createdAt||0)-(a[1].createdAt||0))
+        .slice(0, 25);
+
+      if(list.length===0){
+        $('#purchaseList').innerHTML = `<div class="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-600">Belum ada pembelian.</div>`;
+        return;
+      }
+
+      $('#purchaseList').innerHTML = list.map(([id,p])=>{
+        const itemsTotal = Number(p.itemsTotal||0);
+        const grand = Number(p.grandTotal||0);
+        return `
+          <div class="rounded-2xl border p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="font-semibold">Pembelian <span class="mono">${escapeHtml(id)}</span></div>
+                <div class="text-sm text-slate-600">${fmtTime(p.createdAt)} • Supplier: <b>${escapeHtml(p.supplier||'-')}</b> • Ref: <span class="mono">${escapeHtml(p.ref||'-')}</span></div>
+                <div class="text-xs text-slate-500">Ongkir: ${rupiah(p.shippingCost||0)} • Biaya lain: ${rupiah(p.otherCost||0)} • by: <span class="mono">${escapeHtml(p.createdBy||'-')}</span></div>
+              </div>
+              <div class="text-right">
+                <div class="text-xs text-slate-500">Grand total</div>
+                <div class="text-lg font-semibold">${rupiah(grand)}</div>
+              </div>
+            </div>
+            <details class="mt-3 rounded-2xl border bg-slate-50 p-3">
+              <summary class="cursor-pointer text-sm font-medium">Detail item (total ${rupiah(itemsTotal)})</summary>
+              <div class="mt-2 grid gap-2 text-sm">
+                ${(p.items||[]).map(it=>{
+                  const prod = state.products?.[it.productId];
+                  const name = prod?.name || it.name || it.productId;
+                  return `<div class="flex items-center justify-between"><span>${escapeHtml(name)} × ${Number(it.qty||0)} ${escapeHtml(prod?.unit||it.unit||'')}</span><span>${rupiah(Number(it.qty||0)*Number(it.cost||0))}</span></div>`;
+                }).join('') || '<div class="text-slate-500">(kosong)</div>'}
+              </div>
+              ${p.note? `<div class="mt-2 text-xs text-slate-600">Catatan: ${escapeHtml(p.note)}</div>`:''}
+            </details>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderExpenses(){
+      if(!isAdmin()) return;
+      const list = Object.entries(state.expenses || {})
+        .sort((a,b)=> (b[1].createdAt||0)-(a[1].createdAt||0))
+        .slice(0, 40);
+
+      if(list.length===0){
+        $('#expenseList').innerHTML = `<div class="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-600">Belum ada biaya.</div>`;
+        return;
+      }
+
+      $('#expenseList').innerHTML = list.map(([id,e])=>`
+        <div class="rounded-2xl border p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="font-semibold">${escapeHtml(e.type||'Biaya')}</div>
+              <div class="text-sm text-slate-600">${fmtTime(e.createdAt)} • ${escapeHtml(e.note||'')}</div>
+              <div class="text-xs text-slate-500">ID: <span class="mono">${escapeHtml(id)}</span> • by: <span class="mono">${escapeHtml(e.createdBy||'-')}</span></div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-slate-500">Jumlah</div>
+              <div class="text-lg font-semibold">${rupiah(e.amount||0)}</div>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderUsers(){
+      if(!isAdmin()) return;
+      const list = Object.entries(state.users || {})
+        .sort((a,b)=> (a[1].email||'').localeCompare(b[1].email||''));
+
+      if(list.length===0){
+        $('#usersList').innerHTML = `<div class="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-600">Belum ada user.</div>`;
+        return;
+      }
+
+      $('#usersList').innerHTML = list.map(([uid,u])=>`
+        <div class="rounded-2xl border p-4">
+          <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div class="min-w-0">
+              <div class="font-semibold truncate">${escapeHtml(u.email||uid)}</div>
+              <div class="text-sm text-slate-600">Nama: ${escapeHtml(u.name||'-')}</div>
+              <div class="text-xs text-slate-500">UID: <span class="mono">${escapeHtml(uid)}</span> • dibuat: ${u.createdAt? fmtTime(u.createdAt):'-'}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <select class="userRoleSel rounded-xl border bg-white px-3 py-2 text-sm" data-uid="${uid}">
+                <option value="customer" ${String(u.role||'customer')==='customer'?'selected':''}>customer</option>
+                <option value="admin" ${String(u.role||'customer')==='admin'?'selected':''}>admin</option>
+              </select>
+              <button class="btnSaveUserRole rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800" data-uid="${uid}">Simpan</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      $$('.btnSaveUserRole', $('#usersList')).forEach(btn=> btn.addEventListener('click', ()=>{
+        const uid = btn.dataset.uid;
+        const sel = $(`.userRoleSel[data-uid="${uid}"]`, $('#usersList'));
+        saveUserRole(uid, sel.value);
+      }));
+    }
+
+    function renderMiniLog(v){
+      const list = Object.entries(v || {})
+        .sort((a,b)=> (b[1].at||0) - (a[1].at||0))
+        .slice(0, 8);
+      if(list.length===0){
+        $('#miniLog').innerHTML = `<div class="text-slate-500">Belum ada log.</div>`;
+        return;
+      }
+      $('#miniLog').innerHTML = list.map(([id,e])=>`
+        <div class="flex items-start justify-between gap-3">
+          <div class="mono text-slate-500">${fmtTime(e.at)}</div>
+          <div class="text-right">
+            <div class="font-medium">${escapeHtml(e.type||'EVENT')}</div>
+            <div class="text-slate-500 mono">${escapeHtml(e.ref||'')}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderReport(){
+      if(!isAdmin()) return;
+      const orders = Object.values(state.orders || {});
+      const purchases = Object.values(state.purchases || {});
+      const expenses = Object.values(state.expenses || {});
+
+      const includedStatuses = new Set(['CONFIRMED','PACKED','SHIPPED','DONE']);
+      const sales = orders.filter(o=> includedStatuses.has(String(o.status||'CREATED')))
+        .reduce((sum,o)=> sum + Number(o.total||0), 0);
+      const pur = purchases.reduce((sum,p)=> sum + Number(p.grandTotal||0), 0);
+      const exp = expenses.reduce((sum,e)=> sum + Number(e.amount||0), 0);
+      const profit = sales - pur - exp;
+
+      $('#repSales').textContent = rupiah(sales);
+      $('#repPurchases').textContent = rupiah(pur);
+      $('#repExpenses').textContent = rupiah(exp);
+      $('#repProfit').textContent = rupiah(profit);
+
+      // live feed
+      const feed = [];
+      for(const [id,o] of Object.entries(state.orders||{})){
+        feed.push({ at: o.createdAt||0, type:'ORDER', title:`Order ${id}`, sub:`${escapeHtml(o.customerName||'-')} • ${escapeHtml(o.status||'CREATED')}`, amount:Number(o.total||0) });
+      }
+      for(const [id,p] of Object.entries(state.purchases||{})){
+        feed.push({ at: p.createdAt||0, type:'PURCHASE', title:`Pembelian ${id}`, sub:`Supplier: ${escapeHtml(p.supplier||'-')}`, amount:Number(p.grandTotal||0) });
+      }
+      for(const [id,e] of Object.entries(state.expenses||{})){
+        feed.push({ at: e.createdAt||0, type:'EXPENSE', title:`Biaya ${escapeHtml(e.type||id)}`, sub:`${escapeHtml(e.note||'')}`, amount:Number(e.amount||0) });
+      }
+      feed.sort((a,b)=> b.at-a.at);
+      const top = feed.slice(0, 10);
+      $('#liveFeed').innerHTML = top.map(x=>{
+        const badge = x.type==='ORDER' ? 'bg-blue-50 border-blue-200 text-blue-800'
+          : x.type==='PURCHASE' ? 'bg-indigo-50 border-indigo-200 text-indigo-800'
+          : 'bg-rose-50 border-rose-200 text-rose-800';
+        return `
+          <div class="rounded-2xl border p-3 flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="rounded-full border px-2 py-1 text-[11px] ${badge}">${x.type}</span>
+                <div class="font-medium truncate">${x.title}</div>
+              </div>
+              <div class="mt-1 text-xs text-slate-500">${fmtTime(x.at)} • ${x.sub}</div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-slate-500">Amount</div>
+              <div class="font-semibold">${rupiah(x.amount)}</div>
+            </div>
+          </div>
+        `;
+      }).join('') || `<div class="text-sm text-slate-600">Belum ada transaksi.</div>`;
+    }
+
+    /*********************
+     * ACTIONS
+     *********************/
+    function addToCart(pId, delta){
+      const p = state.products?.[pId];
+      if(!p || !p.active) return;
+      const cur = Number(state.cart[pId]||0);
+      let next = cur + Number(delta);
+      const max = Number(p.stock||0);
+      if(next < 0) next = 0;
+      if(next > max) next = max;
+      state.cart[pId] = next;
+      if(next===0) delete state.cart[pId];
+      saveCart();
+      renderCart();
+    }
+
+    function setCartQty(pId, qty){
+      const p = state.products?.[pId];
+      if(!p) return;
+      let next = Number(qty||0);
+      const max = Number(p.stock||0);
+      if(next<0) next=0;
+      if(next>max) next=max;
+      if(next===0) delete state.cart[pId];
+      else state.cart[pId]=next;
+      saveCart();
+      renderCart();
+    }
+
+    async function checkout(){
+      const items = Object.entries(state.cart || {}).map(([productId, qty])=>{
+        const p = state.products?.[productId];
+        return {
+          productId,
+          name: p?.name || productId,
+          unit: p?.unit || 'unit',
+          price: Number(p?.price||0),
+          qty: Number(qty||0)
+        };
+      }).filter(it=> it.qty>0);
+
+      if(items.length===0){ toast('Keranjang kosong.', 'warn'); return; }
+
+      const name = ($('#ckName').value || state.profile?.name || '').trim();
+      const phone = sanitizePhone($('#ckPhone').value || '');
+      const address = ($('#ckAddress').value || '').trim();
+      const shipMethod = $('#ckShipMethod').value;
+      const shipCost = Number($('#ckShipCost').value||0);
+
+      if(!name){ toast('Nama wajib diisi.', 'warn'); return; }
+      if(!phone){ toast('No. WhatsApp wajib diisi.', 'warn'); return; }
+      if(shipMethod !== 'pickup' && !address){ toast('Alamat wajib untuk pengiriman.', 'warn'); return; }
+
+      // validate stock
+      for(const it of items){
+        const stock = Number(state.products?.[it.productId]?.stock||0);
+        if(it.qty > stock){
+          toast(`Stok tidak cukup untuk ${it.name}. Stok: ${stock}`, 'err');
+          return;
+        }
+      }
+
+      const subtotal = items.reduce((s,it)=> s + it.qty*it.price, 0);
+      const total = subtotal + shipCost;
+
+      // build WA message
+      const lines = items.map(it=> `- ${it.name} x${it.qty} = ${rupiah(it.qty*it.price)}`).join('\n');
+      const msg = `Halo Toko Buah, saya mau pesan:\n${lines}\nSubtotal: ${rupiah(subtotal)}\nOngkir: ${rupiah(shipCost)} (${shipMethod})\nTotal: ${rupiah(total)}\nNama: ${name}\nAlamat: ${address || '(pickup)'}\n\nMohon konfirmasi. Terima kasih.`;
+      const link = waLink(phone, msg);
+
+      const orderId = uid('ord');
+      const now = Date.now();
+
+      const order = {
+        createdAt: now,
+        status: 'CREATED',
+        customerUid: state.user.uid,
+        customerEmail: state.user.email,
+        customerName: name,
+        customerPhone: phone,
+        items,
+        subtotal,
+        shipping: { method: shipMethod, cost: shipCost, address },
+        total,
+        wa: { phone, message: msg, link, sentAt: null },
+        history: [ { at: now, action: 'CREATED', by: 'system', note: 'Order dibuat' } ]
+      };
+
+      try{
+        // Save order first
+        await rtdb.set(`orders/${orderId}`, order);
+
+        // Catatan: demi kompatibilitas dengan Rules yang aman, stok TIDAK dikurangi saat customer checkout.
+        // Admin akan mengurangi stok ketika mengubah status (mis. CONFIRMED/PACKED) atau saat pesanan diproses.
+
+        // log
+        await appendMiniLog({ type:'ORDER_CREATED', ref:`orders/${orderId}`, by: state.user.email });
+
+        toast('Pesanan dibuat. Silakan klik tombol WA untuk mengirim pesan.', 'ok');
+        // clear cart
+        state.cart = {};
+        saveCart();
+        renderCart();
+
+        // move to myorders
+        switchTab('myorders');
+      }catch(e){
+        toast('Gagal membuat pesanan: ' + e.message, 'err');
+      }
+    }
+
+    async function updateOrderStatus(orderId){
+      if(!isAdmin()) return;
+      const root = $(`#adminOrders`);
+      const sel = $(`.ordStatus[data-id="${orderId}"]`, root);
+      const noteInp = $(`.ordNote[data-id="${orderId}"]`, root);
+      const status = sel.value;
+      const note = (noteInp.value||'').trim();
+      const now = Date.now();
+      const o = state.orders?.[orderId];
+      if(!o){ toast('Order tidak ditemukan.', 'err'); return; }
+
+      // stok akan dikurangi saat pertama kali masuk status yang "mengunci" penjualan
+      const lockStatuses = new Set(['CONFIRMED','PACKED','SHIPPED','DONE']);
+      const wasLocked = lockStatuses.has(String(o.status||'CREATED'));
+      const willLock = lockStatuses.has(String(status||'CREATED'));
+
+      const hist = Array.isArray(o.history) ? o.history.slice() : [];
+      hist.push({ at: now, action: status, by: state.user?.email || 'admin', note });
+
+      try{
+        // Kurangi stok hanya sekali: saat transisi pertama kali menjadi status lock.
+        if(!wasLocked && willLock){
+          const items = Array.isArray(o.items) ? o.items : [];
+          // cek stok sebelum commit
+          for(const it of items){
+            const stock = Number(state.products?.[it.productId]?.stock ?? 0);
+            if(Number(it.qty||0) > stock){
+              toast(`Stok tidak cukup untuk ${it.name||it.productId}. Stok: ${stock}`, 'err');
+              return;
+            }
+          }
+          for(const it of items){
+            await rtdb.increment(`products/${it.productId}/stock`, -Number(it.qty||0));
+          }
+        }
+
+        await rtdb.update(`orders/${orderId}`, { status, history: hist });
+        await appendMiniLog({ type:'ORDER_STATUS', ref:`orders/${orderId}`, by: state.user?.email || 'admin' });
+        toast('Status disimpan.', 'ok');
+      }catch(e){ toast('Gagal update status: ' + e.message, 'err'); }
+    }
+
+    async function saveProduct(){
+      if(!isAdmin()) return;
+      const id = state.ui.editingProductId || uid('prd');
+      const name = ($('#pName').value||'').trim();
+      const unit = ($('#pUnit').value||'').trim() || 'unit';
+      const price = Number($('#pPrice').value||0);
+      const stock = Number($('#pStock').value||0);
+      const imageUrl = ($('#pImg').value||'').trim();
+      const active = $('#pActive').checked;
+      if(!name){ toast('Nama produk wajib.', 'warn'); return; }
+
+      const existing = state.products?.[id];
+      const payload = {
+        name, unit, price, imageUrl, active,
+        updatedAt: Date.now(),
+      };
+
+      try{
+        if(existing){
+          // if admin entered stock, treat as absolute set for edit dialog
+          payload.stock = stock;
+          await rtdb.update(`products/${id}`, payload);
+          await appendMiniLog({ type:'PRODUCT_UPDATE', ref:`products/${id}`, by: state.user?.email || 'admin' });
+        } else {
+          await rtdb.set(`products/${id}`, { ...payload, stock, createdAt: Date.now() });
+          await appendMiniLog({ type:'PRODUCT_CREATE', ref:`products/${id}`, by: state.user?.email || 'admin' });
+        }
+        toast('Produk disimpan.', 'ok');
+        $('#productDialog').close();
+      }catch(e){ toast('Gagal simpan produk: ' + e.message, 'err'); }
+    }
+
+    async function deleteProduct(){
+      if(!isAdmin()) return;
+      const id = state.ui.editingProductId;
+      if(!id) return;
+      if(!confirm('Hapus produk? (Tidak menghapus data transaksi lama)')) return;
+      try{
+        await rtdb.remove(`products/${id}`);
+        await appendMiniLog({ type:'PRODUCT_DELETE', ref:`products/${id}`, by: state.user?.email || 'admin' });
+        toast('Produk dihapus.', 'ok');
+        $('#productDialog').close();
+      }catch(e){ toast('Gagal hapus produk: ' + e.message, 'err'); }
+    }
+
+    async function savePurchase(){
+      if(!isAdmin()) return;
+      const supplier = ($('#purSupplier').value||'').trim();
+      const ref = ($('#purRef').value||'').trim();
+      const shippingCost = Number($('#purShipCost').value||0);
+      const otherCost = Number($('#purOtherCost').value||0);
+      const note = ($('#purNote').value||'').trim();
+
+      if(!supplier){ toast('Supplier wajib.', 'warn'); return; }
+
+      const items = state.ui.purchaseRows
+        .filter(r=> r.productId && Number(r.qty)>0)
+        .map(r=>{
+          const prod = state.products?.[r.productId];
+          return {
+            productId: r.productId,
+            name: prod?.name || r.productId,
+            unit: prod?.unit || 'unit',
+            qty: Number(r.qty||0),
+            cost: Number(r.cost||0)
+          };
+        });
+
+      if(items.length===0){ toast('Tambahkan minimal 1 item.', 'warn'); return; }
+
+      const itemsTotal = items.reduce((s,it)=> s + it.qty*it.cost, 0);
+      const grandTotal = itemsTotal + shippingCost + otherCost;
+      const id = uid('pur');
+      const now = Date.now();
+
+      const purchase = {
+        createdAt: now,
+        supplier, ref,
+        items,
+        itemsTotal,
+        shippingCost,
+        otherCost,
+        grandTotal,
+        note,
+        createdBy: state.user?.email || 'admin'
+      };
+
+      try{
+        await rtdb.set(`purchases/${id}`, purchase);
+        // increase stock
+        for(const it of items){
+          await rtdb.increment(`products/${it.productId}/stock`, it.qty);
+        }
+        await appendMiniLog({ type:'PURCHASE_CREATE', ref:`purchases/${id}`, by: state.user?.email || 'admin' });
+        toast('Pembelian disimpan & stok bertambah.', 'ok');
+
+        // reset form
+        $('#purSupplier').value = '';
+        $('#purRef').value = '';
+        $('#purShipCost').value = 0;
+        $('#purOtherCost').value = 0;
+        $('#purNote').value = '';
+        state.ui.purchaseRows = [{ rowId: uid('row'), productId:'', qty:0, cost:0 }];
+        renderPurchaseRows();
+      }catch(e){ toast('Gagal simpan pembelian: ' + e.message, 'err'); }
+    }
+
+    async function saveExpense(){
+      if(!isAdmin()) return;
+      const type = ($('#expType').value||'').trim();
+      const amount = Number($('#expAmount').value||0);
+      const note = ($('#expNote').value||'').trim();
+      if(!type){ toast('Jenis biaya wajib.', 'warn'); return; }
+      if(amount<=0){ toast('Jumlah biaya harus > 0.', 'warn'); return; }
+
+      const id = uid('exp');
+      const payload = { type, amount, note, createdAt: Date.now(), createdBy: state.user?.email || 'admin' };
+      try{
+        await rtdb.set(`expenses/${id}`, payload);
+        await appendMiniLog({ type:'EXPENSE_CREATE', ref:`expenses/${id}`, by: state.user?.email || 'admin' });
+        toast('Biaya disimpan.', 'ok');
+        $('#expType').value=''; $('#expAmount').value=0; $('#expNote').value='';
+      }catch(e){ toast('Gagal simpan biaya: ' + e.message, 'err'); }
+    }
+
+    async function saveUserRole(uidv, role){
+      if(!isAdmin()) return;
+      try{
+        await rtdb.update(`users/${uidv}`, { role });
+        await appendMiniLog({ type:'USER_ROLE', ref:`users/${uidv}`, by: state.user?.email || 'admin' });
+        toast('Role user disimpan.', 'ok');
+      }catch(e){ toast('Gagal simpan role: ' + e.message, 'err'); }
+    }
+
+    function openProductDialog(id=null){
+      if(!isAdmin()) return;
+      state.ui.editingProductId = id;
+      const dlg = $('#productDialog');
+      const isEdit = !!id;
+      const p = isEdit ? state.products?.[id] : null;
+      $('#productDlgTitle').textContent = isEdit ? `Edit Produk` : `Produk Baru`;
+      $('#btnDeleteProduct').classList.toggle('hidden', !isEdit);
+
+      $('#pName').value = p?.name || '';
+      $('#pUnit').value = p?.unit || 'kg';
+      $('#pPrice').value = Number(p?.price||0);
+      $('#pStock').value = Number(p?.stock||0);
+      $('#pImg').value = p?.imageUrl || '';
+      $('#pActive').checked = p?.active ?? true;
+
+      dlg.showModal();
+    }
+
+    function switchTab(tab){
+      state.ui.activeTab = tab;
+      $$('.tabPanel').forEach(p=> p.classList.add('hidden'));
+      $(`#tab-${tab}`).classList.remove('hidden');
+
+      $$('.tabBtn').forEach(b=>{
+        const active = b.dataset.tab === tab;
+        b.className = active
+          ? 'tabBtn rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white'
+          : 'tabBtn rounded-xl border bg-white px-4 py-2 text-sm hover:bg-slate-50';
+      });
+
+      // admin gating
+      if(tab==='admin' && !isAdmin()){
+        toast('Menu admin hanya untuk admin.', 'warn');
+        switchTab('shop');
+      }
+    }
+
+    function switchAdminTab(tab){
+      state.ui.adminTab = tab;
+      $$('.adminPanel').forEach(p=> p.classList.add('hidden'));
+      $(`#admin-${tab}`).classList.remove('hidden');
+
+      $$('.adminTabBtn').forEach(b=>{
+        const active = b.dataset.admintab === tab;
+        b.className = active
+          ? 'adminTabBtn rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white'
+          : 'adminTabBtn rounded-xl border bg-white px-4 py-2 text-sm hover:bg-slate-50';
+      });
+
+      if(tab==='pembelian') renderPurchaseRows();
+      if(tab==='laporan') renderReport();
+    }
+
+    /*********************
+     * AUTH FLOW
+     *********************/
+    let registering = false;
+
+    function setAuthMode(isRegister){
+      registering = isRegister;
+      $('#registerExtra').classList.toggle('hidden', !registering);
+      $('#btnToggleRegister').textContent = registering ? 'Batal' : 'Daftar';
+      $('#btnLogin').textContent = registering ? 'Buat Akun' : 'Masuk';
+    }
+
+    async function doAuth(){
+      const email = ($('#authEmail').value||'').trim();
+      const pass = ($('#authPass').value||'').trim();
+      const name = ($('#authName').value||'').trim();
+
+      if(!email || !pass){ toast('Email & password wajib.', 'warn'); return; }
+      if(registering && pass.length < 6){ toast('Password minimal 6 karakter.', 'warn'); return; }
+
+      try{
+        if(registering){
+          const cred = MODE==='CLOUD'
+            ? await auth.createUserWithEmailAndPassword(email, pass)
+            : await auth.createUserWithEmailAndPassword(email, pass);
+          if(MODE==='CLOUD' && name){ await cred.user.updateProfile({ displayName: name }); }
+          // profile will be ensured on auth state
+          toast('Akun dibuat. Anda masuk otomatis.', 'ok');
+        } else {
+          await auth.signInWithEmailAndPassword(email, pass);
+          toast('Berhasil masuk.', 'ok');
+        }
+      }catch(e){
+        toast(e.message || 'Gagal autentikasi.', 'err');
+      }
+    }
+
+    function setLoggedInUI(loggedIn){
+      $('#authView').classList.toggle('hidden', loggedIn);
+      $('#appView').classList.toggle('hidden', !loggedIn);
+      $('#userChip').classList.toggle('hidden', !loggedIn);
+      $('#userChip').classList.toggle('flex', loggedIn);
+    }
+
+    function updateUserChip(){
+      $('#userEmail').textContent = state.user?.email || '';
+      $('#userRole').textContent = state.role || 'customer';
+      $('#adminTabBtn').classList.toggle('hidden', !isAdmin());
+    }
+
+    auth.onAuthStateChanged(async (user)=>{
+      state.user = user;
+      if(!user){
+        clearSubs();
+        state.profile=null; state.role='customer';
+        updateUserChip();
+        setLoggedInUI(false);
+        switchTab('shop');
+        return;
+      }
+
+      try{
+        await ensureProfile(user);
+        updateUserChip();
+        setLoggedInUI(true);
+        subscribeAll();
+        renderCart();
+        renderReport();
+
+        // prefill checkout
+        if(state.profile?.name) $('#ckName').value = state.profile.name;
+
+        // show admin tab if needed
+        if(isAdmin()) $('#adminTabBtn').classList.remove('hidden');
+
+      }catch(e){
+        toast('Gagal memuat profil: ' + e.message, 'err');
+      }
+    });
+
+    /*********************
+     * DEMO SEED
+     *********************/
+    async function seedDemoData(){
+      if(MODE==='CLOUD'){
+        toast('Seed demo ditujukan untuk mode lokal. Di cloud, sebaiknya input manual.', 'warn');
+        return;
+      }
+      if(localStorage.getItem(STORAGE_KEYS.demoSeeded)==='1'){
+        toast('Data contoh sudah pernah dibuat.', 'warn');
+        return;
+      }
+      const now = Date.now();
+      const demoProducts = {
+        prd_mangga: { name:'Mangga', unit:'kg', price: 25000, stock: 35, active:true, imageUrl:'', createdAt: now },
+        prd_apel: { name:'Apel Fuji', unit:'kg', price: 38000, stock: 20, active:true, imageUrl:'', createdAt: now },
+        prd_pisang: { name:'Pisang', unit:'sisir', price: 18000, stock: 15, active:true, imageUrl:'', createdAt: now },
+        prd_jeruk: { name:'Jeruk', unit:'kg', price: 22000, stock: 40, active:true, imageUrl:'', createdAt: now },
+        prd_semangka: { name:'Semangka', unit:'pcs', price: 45000, stock: 8, active:true, imageUrl:'', createdAt: now }
+      };
+      await rtdb.set('products', demoProducts);
+      await appendMiniLog({ type:'DEMO_SEED', ref:'products', by:'system' });
+      localStorage.setItem(STORAGE_KEYS.demoSeeded,'1');
+      toast('Data contoh ditambahkan.', 'ok');
+    }
+
+    /*********************
+     * SECURITY NOTE
+     *********************/
+    // In production, implement Realtime Database rules like:
+    // - Only admins can write to products, purchases, expenses, users roles.
+    // - Customers can create orders under /orders, but only read their own.
+
+    /*********************
+     * ESCAPE HTML
+     *********************/
+    function escapeHtml(str){
+      return String(str ?? '').replace(/[&<>\"']/g, s=>({
+        '&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'
+      }[s]));
+    }
+
+    /*********************
+     * WIRE UI EVENTS
+     *********************/
+    $('#btnToggleRegister').addEventListener('click', ()=> setAuthMode(!registering));
+    $('#btnLogin').addEventListener('click', doAuth);
+
+    $('#btnLogout').addEventListener('click', async ()=>{
+      try{ await auth.signOut(); toast('Keluar.', 'ok'); }
+      catch(e){ toast('Gagal keluar: ' + e.message, 'err'); }
+    });
+
+    $$('.tabBtn').forEach(btn=> btn.addEventListener('click', ()=> switchTab(btn.dataset.tab)));
+    $$('.adminTabBtn').forEach(btn=> btn.addEventListener('click', ()=> switchAdminTab(btn.dataset.admintab)));
+
+    $('#search').addEventListener('input', renderProducts);
+    $('#btnRefresh').addEventListener('click', ()=>{ renderProducts(); renderCart(); toast('Refresh tampilan.', 'ok'); });
+
+    $('#btnClearCart').addEventListener('click', ()=>{ state.cart={}; saveCart(); renderCart(); });
+    $('#ckShipCost').addEventListener('input', renderCart);
+    $('#ckShipMethod').addEventListener('change', ()=>{
+      const m = $('#ckShipMethod').value;
+      if(m==='pickup'){ $('#ckShipCost').value = 0; }
+      renderCart();
+    });
+    $('#btnCheckout').addEventListener('click', checkout);
+
+    // Admin: products
+    $('#btnNewProduct').addEventListener('click', ()=> openProductDialog(null));
+    $('#btnCloseProductDlg').addEventListener('click', ()=> $('#productDialog').close());
+    $('#btnSaveProduct').addEventListener('click', saveProduct);
+    $('#btnDeleteProduct').addEventListener('click', deleteProduct);
+
+    // Admin: purchase
+    $('#btnAddPurchaseRow').addEventListener('click', ()=>{ state.ui.purchaseRows.push({ rowId: uid('row'), productId:'', qty:0, cost:0 }); renderPurchaseRows(); });
+    $('#purShipCost').addEventListener('input', computePurchaseTotals);
+    $('#purOtherCost').addEventListener('input', computePurchaseTotals);
+    $('#btnSavePurchase').addEventListener('click', savePurchase);
+
+    // Admin: expense
+    $('#btnSaveExpense').addEventListener('click', saveExpense);
+
+    // Refresh buttons
+    $('#btnMyOrdersRefresh').addEventListener('click', renderMyOrders);
+    $('#btnOrdersRefresh').addEventListener('click', renderAdminOrders);
+    $('#btnPurchaseRefresh').addEventListener('click', renderPurchases);
+    $('#btnExpenseRefresh').addEventListener('click', renderExpenses);
+    $('#btnUsersRefresh').addEventListener('click', renderUsers);
+    $('#btnReportRefresh').addEventListener('click', renderReport);
+
+    // Setup Cloud
+    const RULES_PROD = `{
+  "rules": {
+    ".read": "auth != null",
+
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid",
+        "role": { ".write": "root.child('users/' + auth.uid + '/role').val() == 'admin'" },
+        "email": { ".write": "auth != null && auth.uid == $uid" },
+        "name": { ".write": "auth != null && auth.uid == $uid" },
+        "createdAt": { ".write": "auth != null && auth.uid == $uid" }
+      }
+    },
+
+    "products": {
+      ".read": "auth != null",
+      ".write": "root.child('users/' + auth.uid + '/role').val() == 'admin'"
+    },
+
+    "purchases": {
+      ".read": "root.child('users/' + auth.uid + '/role').val() == 'admin'",
+      ".write": "root.child('users/' + auth.uid + '/role').val() == 'admin'"
+    },
+
+    "expenses": {
+      ".read": "root.child('users/' + auth.uid + '/role').val() == 'admin'",
+      ".write": "root.child('users/' + auth.uid + '/role').val() == 'admin'"
+    },
+
+    "logs": {
+      ".read": "root.child('users/' + auth.uid + '/role').val() == 'admin'",
+      ".write": "root.child('users/' + auth.uid + '/role').val() == 'admin'"
+    },
+
+    "orders": {
+      ".read": "auth != null",
+      "$orderId": {
+        ".read": "auth != null && (root.child('users/' + auth.uid + '/role').val() == 'admin' || data.child('customerUid').val() == auth.uid)",
+        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() == 'admin' || (!data.exists() && newData.child('customerUid').val() == auth.uid))",
+
+        "wa": {
+          "sentAt": {
+            ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() == 'admin' || data.parent().parent().child('customerUid').val() == auth.uid)"
+          }
+        }
+      }
+    }
+  }
+}`;
+
+    const RULES_DEV = `{
+  "rules": {
+    ".read": true,
+    ".write": true
+  }
+}`;
+
+    async function copyText(text){
+      try{ await navigator.clipboard.writeText(text); toast('Tersalin ke clipboard.', 'ok'); }
+      catch{ toast('Gagal copy. Silakan blok teks lalu copy manual.', 'warn'); }
+    }
+
+    function openSetup(){
+      $('#setupDialog').showModal();
+      const cfg = loadCloudConfig();
+      $('#cfgApiKey').value = cfg.apiKey || '';
+      $('#cfgAuthDomain').value = cfg.authDomain || '';
+      $('#cfgDatabaseURL').value = cfg.databaseURL || '';
+      $('#cfgProjectId').value = cfg.projectId || '';
+      $('#cfgStorageBucket').value = cfg.storageBucket || '';
+      $('#cfgAppId').value = cfg.appId || '';
+
+      // fill rules textareas
+      const prod = $('#rulesProd');
+      const dev = $('#rulesDev');
+      if(prod) prod.value = RULES_PROD.replaceAll('OWNER_EMAIL_HERE', (state.user?.email || 'OWNER_EMAIL_HERE'));
+      if(dev) dev.value = RULES_DEV;
+
+      const btnCopyProd = $('#btnCopyRulesProd');
+      const btnCopyDev = $('#btnCopyRulesDev');
+      if(btnCopyProd && !btnCopyProd.dataset.wired){
+        btnCopyProd.dataset.wired = '1';
+        btnCopyProd.addEventListener('click', ()=> copyText($('#rulesProd').value));
+      }
+      if(btnCopyDev && !btnCopyDev.dataset.wired){
+        btnCopyDev.dataset.wired = '1';
+        btnCopyDev.addEventListener('click', ()=> copyText($('#rulesDev').value));
+      }
+    }
+
+    ['#btnOpenSetup','#btnOpenSetup2','#btnOpenSetup3'].forEach(id=>{
+      const el = $(id);
+      if(el) el.addEventListener('click', openSetup);
+    });
+
+    $('#btnCloseSetup').addEventListener('click', ()=> $('#setupDialog').close());
+    $('#btnSaveCloud').addEventListener('click', ()=>{
+      const cfg = {
+        apiKey: $('#cfgApiKey').value.trim(),
+        authDomain: $('#cfgAuthDomain').value.trim(),
+        databaseURL: $('#cfgDatabaseURL').value.trim(),
+        projectId: $('#cfgProjectId').value.trim(),
+        storageBucket: $('#cfgStorageBucket').value.trim(),
+        appId: $('#cfgAppId').value.trim()
+      };
+      localStorage.setItem(STORAGE_KEYS.cloudCfg, JSON.stringify(cfg));
+      location.reload();
+    });
+    $('#btnResetCloud').addEventListener('click', ()=>{
+      localStorage.removeItem(STORAGE_KEYS.cloudCfg);
+      location.reload();
+    });
+
+    // Demo seed
+    $('#btnSeedDemo').addEventListener('click', seedDemoData);
+
+    // default tabs
+    switchTab('shop');
+    switchAdminTab('produk');
+
+    // Visual
+    updateUserChip();
+
+    // If cloud but config invalid show notice
+    if(MODE==='LOCAL_DEMO'){
+      $('#bannerCloud').classList.remove('hidden');
+      setConn('warn','Demo Lokal');
+    }
+  </script>
+</body>
+</html>
